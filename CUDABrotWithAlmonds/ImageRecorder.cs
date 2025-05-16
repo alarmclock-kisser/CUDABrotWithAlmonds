@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing.Imaging;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -13,7 +15,7 @@ namespace CUDABrotWithAlmonds
 		public Label CountLabel;
 
 
-		public List<System.Drawing.Image> CachedImages = [];
+		public List<Image> CachedImages = [];
 		public List<long> CachedIntervalls = [];
 
 
@@ -47,7 +49,7 @@ namespace CUDABrotWithAlmonds
 		}
 
 
-		public void AddImage(System.Drawing.Image image, long interval)
+		public void AddImage(Image image, long interval)
 		{
 			this.CachedImages.Add(image);
 			this.CachedIntervalls.Add(interval);
@@ -56,6 +58,99 @@ namespace CUDABrotWithAlmonds
 			this.CountLabel.Text = $"Images: {this.CachedImages.Count}";
 		}
 
+		public string CreateGif(string folder = "", string name = "cudabitmaps", int frameRate = 5, bool doLoop = false)
+		{
+			if (this.CachedImages.Count == 0)
+			{
+				return "";
+			}
+
+			if (string.IsNullOrEmpty(folder))
+			{
+				folder = Path.Combine(this.Repopath, "Resources", "ExportedGifs");
+			}
+			if (!Directory.Exists(folder))
+			{
+				Directory.CreateDirectory(folder);
+			}
+
+			string baseFile = Path.Combine(folder, name + ".gif");
+			string file = baseFile;
+			int fileIndex = 1;
+			while (File.Exists(file))
+			{
+				file = Path.Combine(folder, $"{name}_{fileIndex:D3}.gif");
+				fileIndex++;
+			}
+
+			// Delay in 1/100 Sekunden
+			int delay = 100 / frameRate;
+			byte[] delayBytes = new byte[this.CachedImages.Count * 4];
+			for (int i = 0; i < this.CachedImages.Count; i++)
+			{
+				delayBytes[i * 4 + 0] = (byte) (delay & 0xFF);
+				delayBytes[i * 4 + 1] = (byte) ((delay >> 8) & 0xFF);
+				delayBytes[i * 4 + 2] = 0;
+				delayBytes[i * 4 + 3] = 0;
+			}
+
+			// Delay PropertyItem
+			PropertyItem delayItem = (PropertyItem) FormatterServices.GetUninitializedObject(typeof(PropertyItem));
+			delayItem.Id = 0x5100;
+			delayItem.Type = 4;
+			delayItem.Len = delayBytes.Length;
+			delayItem.Value = delayBytes;
+
+			// Loop PropertyItem
+			PropertyItem loopItem = (PropertyItem) FormatterServices.GetUninitializedObject(typeof(PropertyItem));
+			loopItem.Id = 0x5101;
+			loopItem.Type = 1;
+			loopItem.Len = 4;
+			loopItem.Value = doLoop ? [0, 0, 0, 0] : [1, 0, 0, 0];
+
+			ImageCodecInfo gifEncoder = ImageCodecInfo.GetImageEncoders().First(e => e.MimeType == "image/gif");
+			System.Drawing.Imaging.Encoder encoder = System.Drawing.Imaging.Encoder.SaveFlag;
+			EncoderParameters encParams = new EncoderParameters(1);
+
+			using (Bitmap firstFrame = new(this.CachedImages[0]))
+			{
+				firstFrame.SetPropertyItem(delayItem);
+				firstFrame.SetPropertyItem(loopItem);
+
+				encParams.Param[0] = new EncoderParameter(encoder, (long) EncoderValue.MultiFrame);
+				firstFrame.Save(file, gifEncoder, encParams);
+
+				encParams.Param[0] = new EncoderParameter(encoder, (long) EncoderValue.FrameDimensionTime);
+				for (int i = 1; i < this.CachedImages.Count; i++)
+				{
+					using Bitmap frame = new(this.CachedImages[i]);
+					frame.SetPropertyItem(delayItem);
+					firstFrame.SaveAdd(frame, encParams);
+				}
+
+				encParams.Param[0] = new EncoderParameter(encoder, (long) EncoderValue.Flush);
+				firstFrame.SaveAdd(encParams);
+			}
+
+			// Dispose of the images
+			foreach (Image img in this.CachedImages)
+			{
+				img.Dispose();
+			}
+			this.CachedImages.Clear();
+
+			return file;
+		}
+
+
+
+
+		// Hilfsfunktion: Encoder holen
+		private ImageCodecInfo GetEncoder(ImageFormat format)
+		{
+			return ImageCodecInfo.GetImageDecoders().FirstOrDefault(c => c.FormatID == format.Guid)
+				   ?? throw new Exception("GIF encoder not found.");
+		}
 
 
 

@@ -46,7 +46,7 @@ namespace CUDABrotWithAlmonds
 			this.Location = new Point(0, 0);
 
 			// Init. classes
-			this.Recorder = new ImageRecorder(this.Repopath);
+			this.Recorder = new ImageRecorder(this.Repopath, this.label_cached);
 			this.ImageH = new ImageHandling(this.Repopath, this.listBox_images, this.pictureBox_view, null, this.label_meta);
 			this.ContextH = new CudaContextHandling(this.Repopath, this.listBox_log, this.comboBox_devices, this.comboBox_kernels);
 			this.GuiB = new GuiBuilder(this.Repopath, this.listBox_log, this.ContextH, this.ImageH, this.panel_kernel);
@@ -292,6 +292,7 @@ namespace CUDABrotWithAlmonds
 			}
 			else
 			{
+				this.Recorder.ResetCache(); // Reset cache
 				this.stopwatch.Stop(); // Stop stopwatch
 				this.pictureBox_view.MouseDown += this.ImageH.ViewPBox_MouseDown;
 				this.pictureBox_view.MouseMove += this.ImageH.ViewPBox_MouseMove;
@@ -508,6 +509,13 @@ namespace CUDABrotWithAlmonds
 			this.ImageH.CurrentObject?.ResetImage();
 
 			this.ImageH.FillImagesListBox();
+		}
+
+		private void button_createGif_Click(object sender, EventArgs e)
+		{
+			// Folder MyPictures
+			string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "CUDA-GIFs");
+			this.Recorder.CreateGif(folder, this.ImageH.CurrentObject?.Name ?? "animatedGif_", 5, true);
 		}
 	}
 }

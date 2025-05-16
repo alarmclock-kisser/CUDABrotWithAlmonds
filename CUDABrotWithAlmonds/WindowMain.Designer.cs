@@ -44,6 +44,8 @@
 			this.button_executeOOP = new Button();
 			this.button_reset = new Button();
 			this.label_execTime = new Label();
+			this.label_cached = new Label();
+			this.button_createGif = new Button();
 			this.panel_view.SuspendLayout();
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_view).BeginInit();
 			this.SuspendLayout();
@@ -194,11 +196,32 @@
 			this.label_execTime.TabIndex = 14;
 			this.label_execTime.Text = "Last exec. time:";
 			// 
+			// label_cached
+			// 
+			this.label_cached.AutoSize = true;
+			this.label_cached.Location = new Point(93, 441);
+			this.label_cached.Name = "label_cached";
+			this.label_cached.Size = new Size(54, 15);
+			this.label_cached.TabIndex = 15;
+			this.label_cached.Text = "0 images";
+			// 
+			// button_createGif
+			// 
+			this.button_createGif.Location = new Point(93, 459);
+			this.button_createGif.Name = "button_createGif";
+			this.button_createGif.Size = new Size(73, 23);
+			this.button_createGif.TabIndex = 16;
+			this.button_createGif.Text = "-> GIF";
+			this.button_createGif.UseVisualStyleBackColor = true;
+			this.button_createGif.Click += this.button_createGif_Click;
+			// 
 			// WindowMain
 			// 
 			this.AutoScaleDimensions = new SizeF(7F, 15F);
 			this.AutoScaleMode = AutoScaleMode.Font;
 			this.ClientSize = new Size(1854, 891);
+			this.Controls.Add(this.button_createGif);
+			this.Controls.Add(this.label_cached);
 			this.Controls.Add(this.label_execTime);
 			this.Controls.Add(this.button_reset);
 			this.Controls.Add(this.button_executeOOP);
@@ -242,5 +265,7 @@
 		private Button button_executeOOP;
 		private Button button_reset;
 		private Label label_execTime;
+		private Label label_cached;
+		private Button button_createGif;
 	}
 }
