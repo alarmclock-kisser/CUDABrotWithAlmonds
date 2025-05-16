@@ -1,5 +1,5 @@
 extern "C" __global__ void mandelbrot01(
-    unsigned char* inputPx,
+    unsigned char* pixels,
     int width,
     int height,
     float zoom,

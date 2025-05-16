@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="ManagedCuda-12" Version="12.8.60" />
     <PackageReference Include="ManagedCuda-NVRTC" Version="12.8.60" />
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.8" />
   </ItemGroup>
 
   <ItemGroup>

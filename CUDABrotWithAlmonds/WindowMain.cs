@@ -17,6 +17,7 @@ namespace CUDABrotWithAlmonds
 		public string Repopath;
 
 		private ImageHandling ImageH;
+		private ImageRecorder Recorder;
 
 		private CudaContextHandling ContextH;
 
@@ -30,6 +31,7 @@ namespace CUDABrotWithAlmonds
 		private bool ctrlKeyPressed;
 		private bool kernelExecutionRequired;
 		private float mandelbrotZoomFactor = 1.0f;
+		private Stopwatch stopwatch = new();
 
 		// ----- ----- CONSTRUCTORS ----- ----- \\
 		public WindowMain()
@@ -44,6 +46,7 @@ namespace CUDABrotWithAlmonds
 			this.Location = new Point(0, 0);
 
 			// Init. classes
+			this.Recorder = new ImageRecorder(this.Repopath);
 			this.ImageH = new ImageHandling(this.Repopath, this.listBox_images, this.pictureBox_view, null, this.label_meta);
 			this.ContextH = new CudaContextHandling(this.Repopath, this.listBox_log, this.comboBox_devices, this.comboBox_kernels);
 			this.GuiB = new GuiBuilder(this.Repopath, this.listBox_log, this.ContextH, this.ImageH, this.panel_kernel);
@@ -182,7 +185,7 @@ namespace CUDABrotWithAlmonds
 			ImageObject image = this.ImageH.Images[index];
 
 			// STOPWATCH
-			Stopwatch stopwatch = Stopwatch.StartNew();
+			Stopwatch sw = Stopwatch.StartNew();
 
 			// Verify image on device
 			bool moved = false;
@@ -235,8 +238,15 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// STOPWATCH
-			stopwatch.Stop();
-			this.label_execTime.Text = $"Execution time: {stopwatch.ElapsedMilliseconds} ms";
+			sw.Stop();
+			this.label_execTime.Text = $"Execution time: {sw.ElapsedMilliseconds} ms";
+
+			// If kernel is Mandelbrot, cache image with interval
+			if (this.MandelbrotMode && image.Img != null)
+			{
+				this.Recorder.AddImage(image.Img, this.stopwatch.ElapsedMilliseconds);
+				this.stopwatch.Restart(); // Restart stopwatch
+			}
 
 			// Add modification to image
 			if (addMod)
@@ -274,6 +284,7 @@ namespace CUDABrotWithAlmonds
 			// 4. Neue Event-Handler registrieren
 			if (this.MandelbrotMode)
 			{
+				this.stopwatch = Stopwatch.StartNew(); // Start stopwatch
 				this.pictureBox_view.MouseDown += this.pictureBox_view_MouseDown;
 				this.pictureBox_view.MouseMove += this.pictureBox_view_MouseMove;
 				this.pictureBox_view.MouseUp += this.pictureBox_view_MouseUp;
@@ -281,6 +292,7 @@ namespace CUDABrotWithAlmonds
 			}
 			else
 			{
+				this.stopwatch.Stop(); // Stop stopwatch
 				this.pictureBox_view.MouseDown += this.ImageH.ViewPBox_MouseDown;
 				this.pictureBox_view.MouseMove += this.ImageH.ViewPBox_MouseMove;
 				this.pictureBox_view.MouseUp += this.ImageH.ViewPBox_MouseUp;
@@ -476,11 +488,11 @@ namespace CUDABrotWithAlmonds
 			// If CTRL down, fit zoom
 			if (ModifierKeys == Keys.Control)
 			{
-				this.ImageH.FitZoom();
+				this.ImageH.CenterImage();
 			}
 			else
 			{
-				this.ImageH.CenterImage();
+				this.ImageH.FitZoom();
 			}
 		}
 
