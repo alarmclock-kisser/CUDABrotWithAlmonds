@@ -63,10 +63,7 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Set latest kernel
-			if (this.comboBox_kernels.Items.Count > 0)
-			{
-				this.ContextH.KernelH?.SelectLatestKernel();
-			}
+			// this.ContextH.KernelH?.SelectLatestKernel();
 		}
 
 
@@ -89,7 +86,7 @@ namespace CUDABrotWithAlmonds
 			tooltip.Show(message, this.listBox_log, 0, 0, 10000);
 		}
 
-		public void MoveImage(int index = -1)
+		public void MoveImage(int index = -1, bool refresh = true)
 		{
 			if (index == -1 && this.ImageH.CurrentObject != null)
 			{
@@ -139,7 +136,10 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Refill list
-			this.ImageH.FillImagesListBox();
+			if (refresh)
+			{
+				this.ImageH.FillImagesListBox();
+			}
 		}
 
 		public void LoadKernel(string kernelName = "")
@@ -182,7 +182,12 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Get image
-			ImageObject image = this.ImageH.Images[index];
+			ImageObject? image = this.ImageH.Images[index];
+			if (image == null)
+			{
+				MessageBox.Show("Invalid image", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				return;
+			}
 
 			// STOPWATCH
 			Stopwatch sw = Stopwatch.StartNew();
@@ -301,6 +306,61 @@ namespace CUDABrotWithAlmonds
 			}
 		}
 
+		public void ExecuteKernelOOPAll(string kernelName = "")
+		{
+			int count = this.ImageH.Images.Count;
+			if (count == 0)
+			{
+				MessageBox.Show("No images to process", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				return;
+			}
+
+			// Load kernel
+			this.ContextH.KernelH?.LoadKernel(kernelName);
+			if (this.ContextH.KernelH?.Kernel == null)
+			{
+				MessageBox.Show("Failed to load kernel", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				return;
+			}
+
+			// Move all images to device
+			for (int i = 0; i < count; i++)
+			{
+				this.MoveImage(i, false);
+			}
+
+			// Execute kernel on all images
+			for (int i = 0; i < count; i++)
+			{
+				this.ExecuteKernelOOP(i, kernelName);
+			}
+
+			// Move all images to host
+			for (int i = 0; i < count; i++)
+			{
+				this.MoveImage(i, false);
+			}
+
+			// Refill list
+			this.ImageH.FillImagesListBox();
+		}
+
+		public void ExportAllGif()
+		{
+			List<Image> images = this.ImageH.Images.Where(x => x.Img != null).Select(x => x.Img ?? new Bitmap(1, 1)).ToList();
+			if (images.Count == 0)
+			{
+				MessageBox.Show("No images to export", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				return;
+			}
+
+			this.Recorder.ResetCache(); // Reset cache
+			this.Recorder.CachedImages = images;
+			this.Recorder.CountLabel.Text = $"Images: {this.Recorder.CachedImages.Count}";
+
+			// Create GIF
+			this.button_createGif_Click(this, EventArgs.Empty);
+		}
 
 
 		// Mandelbrot events
@@ -469,11 +529,25 @@ namespace CUDABrotWithAlmonds
 		// ----- ----- EVENT HANDLERS ----- ----- \\
 		private void button_import_Click(object sender, EventArgs e)
 		{
+			// If CTRL down, import GIF
+			if (ModifierKeys == Keys.Control)
+			{
+				this.ImageH.ImportGif();
+				return;
+			}
+
 			this.ImageH.ImportImage();
 		}
 
 		private void button_export_Click(object sender, EventArgs e)
 		{
+			// If CTRL down, export GIF
+			if (ModifierKeys == Keys.Control)
+			{
+				this.ExportAllGif();
+				return;
+			}
+
 			this.ImageH.CurrentObject?.Export(true);
 		}
 
@@ -499,6 +573,13 @@ namespace CUDABrotWithAlmonds
 
 		private void button_executeOOP_Click(object? sender, EventArgs e)
 		{
+			// If CTRL down: Execute on all images
+			if (ModifierKeys == Keys.Control)
+			{
+				this.ExecuteKernelOOPAll(this.comboBox_kernels.SelectedItem?.ToString() ?? "");
+				return;
+			}
+
 			bool addMod = !((this.comboBox_kernels.SelectedItem?.ToString() ?? "").ToLower().Contains("mandelbrot"));
 
 			this.ExecuteKernelOOP(-1, this.comboBox_kernels.SelectedItem?.ToString() ?? "");
@@ -511,11 +592,52 @@ namespace CUDABrotWithAlmonds
 			this.ImageH.FillImagesListBox();
 		}
 
-		private void button_createGif_Click(object sender, EventArgs e)
+		private async void button_createGif_Click(object sender, EventArgs e)
 		{
 			// Folder MyPictures
 			string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "CUDA-GIFs");
-			this.Recorder.CreateGif(folder, this.ImageH.CurrentObject?.Name ?? "animatedGif_", 5, true);
+			string result;
+
+			// FRAME RATE
+			int frameRate = (int) this.numericUpDown_frameRate.Value;
+
+			// RESIZE
+			Size? resize = null;
+			if ((int) this.numericUpDown_size.Value < Math.Min(this.ImageH.CurrentObject?.Width ?? 0, this.ImageH.CurrentObject?.Height ?? 0));
+			{
+				resize = new Size((int) this.numericUpDown_size.Value, (int) this.numericUpDown_size.Value);
+			}
+
+			// If CTRL down, async call
+			if (ModifierKeys == Keys.Control)
+			{
+				int count = this.Recorder.CachedImages.Count;
+				Stopwatch sw = Stopwatch.StartNew();
+
+				this.GuiB.Log("Creating GIF (async) ...", "", 1);
+				result = await this.Recorder.CreateGifAsync(folder, this.ImageH.CurrentObject?.Name ?? "animatedGif_", frameRate, true, resize);
+
+				sw.Stop();
+				this.GuiB.Log("GIF created (async) ", $"{(sw.ElapsedMilliseconds / count)} ms/F", 1);
+			}
+			else
+			{
+				this.GuiB.Log("Creating GIF ...", "", 1);
+				result = this.Recorder.CreateGif(folder, this.ImageH.CurrentObject?.Name ?? "animatedGif_", frameRate, true);
+			}
+
+			// Msgbox
+			if (string.IsNullOrEmpty(result))
+			{
+				MessageBox.Show("Failed to create GIF", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+			else
+			{
+				MessageBox.Show($"GIF created: {result}\n\nSize: {(resize != null ? resize.Value : new Size(this.ImageH.CurrentObject?.Width ?? 0, this.ImageH.CurrentObject?.Height ?? 0))}\nFPS: {frameRate}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+			}
+
+			// Reload image from file
+			this.ImageH.CurrentObject?.ResetImage();
 		}
 	}
 }

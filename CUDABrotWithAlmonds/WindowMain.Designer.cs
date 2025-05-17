@@ -46,8 +46,14 @@
 			this.label_execTime = new Label();
 			this.label_cached = new Label();
 			this.button_createGif = new Button();
+			this.numericUpDown_frameRate = new NumericUpDown();
+			this.label_fps = new Label();
+			this.numericUpDown_size = new NumericUpDown();
+			this.label_resize = new Label();
 			this.panel_view.SuspendLayout();
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_view).BeginInit();
+			((System.ComponentModel.ISupportInitialize) this.numericUpDown_frameRate).BeginInit();
+			((System.ComponentModel.ISupportInitialize) this.numericUpDown_size).BeginInit();
 			this.SuspendLayout();
 			// 
 			// panel_view
@@ -207,19 +213,61 @@
 			// 
 			// button_createGif
 			// 
-			this.button_createGif.Location = new Point(93, 459);
+			this.button_createGif.Location = new Point(162, 462);
 			this.button_createGif.Name = "button_createGif";
-			this.button_createGif.Size = new Size(73, 23);
+			this.button_createGif.Size = new Size(85, 23);
 			this.button_createGif.TabIndex = 16;
 			this.button_createGif.Text = "-> GIF";
 			this.button_createGif.UseVisualStyleBackColor = true;
 			this.button_createGif.Click += this.button_createGif_Click;
+			// 
+			// numericUpDown_frameRate
+			// 
+			this.numericUpDown_frameRate.Location = new Point(197, 491);
+			this.numericUpDown_frameRate.Maximum = new decimal(new int[] { 60, 0, 0, 0 });
+			this.numericUpDown_frameRate.Minimum = new decimal(new int[] { 1, 0, 0, 0 });
+			this.numericUpDown_frameRate.Name = "numericUpDown_frameRate";
+			this.numericUpDown_frameRate.Size = new Size(50, 23);
+			this.numericUpDown_frameRate.TabIndex = 17;
+			this.numericUpDown_frameRate.Value = new decimal(new int[] { 10, 0, 0, 0 });
+			// 
+			// label_fps
+			// 
+			this.label_fps.AutoSize = true;
+			this.label_fps.Location = new Point(162, 493);
+			this.label_fps.Name = "label_fps";
+			this.label_fps.Size = new Size(29, 15);
+			this.label_fps.TabIndex = 18;
+			this.label_fps.Text = "FPS:";
+			// 
+			// numericUpDown_size
+			// 
+			this.numericUpDown_size.Location = new Point(197, 520);
+			this.numericUpDown_size.Maximum = new decimal(new int[] { 8192, 0, 0, 0 });
+			this.numericUpDown_size.Minimum = new decimal(new int[] { 128, 0, 0, 0 });
+			this.numericUpDown_size.Name = "numericUpDown_size";
+			this.numericUpDown_size.Size = new Size(50, 23);
+			this.numericUpDown_size.TabIndex = 19;
+			this.numericUpDown_size.Value = new decimal(new int[] { 1024, 0, 0, 0 });
+			// 
+			// label_resize
+			// 
+			this.label_resize.AutoSize = true;
+			this.label_resize.Location = new Point(161, 522);
+			this.label_resize.Name = "label_resize";
+			this.label_resize.Size = new Size(30, 15);
+			this.label_resize.TabIndex = 20;
+			this.label_resize.Text = "Size:";
 			// 
 			// WindowMain
 			// 
 			this.AutoScaleDimensions = new SizeF(7F, 15F);
 			this.AutoScaleMode = AutoScaleMode.Font;
 			this.ClientSize = new Size(1854, 891);
+			this.Controls.Add(this.label_resize);
+			this.Controls.Add(this.numericUpDown_size);
+			this.Controls.Add(this.label_fps);
+			this.Controls.Add(this.numericUpDown_frameRate);
 			this.Controls.Add(this.button_createGif);
 			this.Controls.Add(this.label_cached);
 			this.Controls.Add(this.label_execTime);
@@ -243,6 +291,8 @@
 			this.Text = "Form1";
 			this.panel_view.ResumeLayout(false);
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_view).EndInit();
+			((System.ComponentModel.ISupportInitialize) this.numericUpDown_frameRate).EndInit();
+			((System.ComponentModel.ISupportInitialize) this.numericUpDown_size).EndInit();
 			this.ResumeLayout(false);
 			this.PerformLayout();
 		}
@@ -267,5 +317,9 @@
 		private Label label_execTime;
 		private Label label_cached;
 		private Button button_createGif;
+		private NumericUpDown numericUpDown_frameRate;
+		private Label label_fps;
+		private NumericUpDown numericUpDown_size;
+		private Label label_resize;
 	}
 }

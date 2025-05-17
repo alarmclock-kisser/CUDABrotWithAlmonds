@@ -1,5 +1,13 @@
-extern "C" __global__
-void onlyEdges01(
+﻿// Hilfsfunktionen außerhalb des Kernels definieren
+__device__ float3 scale3(float3 v, float s) {
+    return make_float3(v.x * s, v.y * s, v.z * s);
+}
+
+__device__ float3 add3(float3 a, float3 b) {
+    return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+extern "C" __global__ void onlyEdges01(
     const unsigned char* inputPixels,
     unsigned char* outputPixels,
     int width,
@@ -12,25 +20,23 @@ void onlyEdges01(
 {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
-
     if (x >= width || y >= height) return;
 
     int pixelPos = (y * width + x) * 4;
 
-    // Farbwerte clampen und tauschen (R <-> B)
-    unsigned char clampedB = (unsigned char)max(0, min(edgeR, 255));  // R -> B
-    unsigned char clampedG = (unsigned char)max(0, min(edgeG, 255));
-    unsigned char clampedR = (unsigned char)max(0, min(edgeB, 255));  // B -> R
+    // R/B-Tausch vorbereiten
+    unsigned char clampedB = (unsigned char)min(max(edgeR, 0), 255);  // R -> B
+    unsigned char clampedG = (unsigned char)min(max(edgeG, 0), 255);
+    unsigned char clampedR = (unsigned char)min(max(edgeB, 0), 255);  // B -> R
     int clampedThickness = max(0, min(thickness, 10));
     float absThreshold = fabsf(threshold);
 
-    // Wei�er Hintergrund
-    outputPixels[pixelPos + 0] = 255;  // R
-    outputPixels[pixelPos + 1] = 255;  // G
-    outputPixels[pixelPos + 2] = 255;  // B
-    outputPixels[pixelPos + 3] = 255;  // A
+    // Weißer Hintergrund
+    outputPixels[pixelPos + 0] = 255;
+    outputPixels[pixelPos + 1] = 255;
+    outputPixels[pixelPos + 2] = 255;
+    outputPixels[pixelPos + 3] = 255;
 
-    // Nur innere Pixel verarbeiten
     if (x >= clampedThickness && x < width - clampedThickness &&
         y >= clampedThickness && y < height - clampedThickness)
     {
@@ -48,25 +54,23 @@ void onlyEdges01(
         float3 gradX = make_float3(0.0f, 0.0f, 0.0f);
         float3 gradY = make_float3(0.0f, 0.0f, 0.0f);
 
-        // 3x3 Nachbarschaft
         for (int dy = -1; dy <= 1; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
                 int nx = x + dx;
                 int ny = y + dy;
-                int nPos = (ny * width + nx) * 4;
+                int neighborPos = (ny * width + nx) * 4;
 
-                // R und B tauschen
-                float r = inputPixels[nPos + 2] / 255.0f;  // B -> R
-                float g = inputPixels[nPos + 1] / 255.0f;
-                float b = inputPixels[nPos + 0] / 255.0f;  // R -> B
-
-                float3 rgb = make_float3(r, g, b);
+                float3 rgb = make_float3(
+                    inputPixels[neighborPos + 2] / 255.0f, // B -> R
+                    inputPixels[neighborPos + 1] / 255.0f, // G
+                    inputPixels[neighborPos + 0] / 255.0f  // R -> B
+                );
 
                 int kx = sobelX[dy + 1][dx + 1];
                 int ky = sobelY[dy + 1][dx + 1];
 
-                gradX += rgb * (float)kx;
-                gradY += rgb * (float)ky;
+                gradX = add3(gradX, scale3(rgb, (float)kx));
+                gradY = add3(gradY, scale3(rgb, (float)ky));
             }
         }
 
@@ -84,14 +88,12 @@ void onlyEdges01(
                     if (dx*dx + dy*dy <= clampedThickness*clampedThickness) {
                         int px = x + dx;
                         int py = y + dy;
-
                         if (px >= 0 && px < width && py >= 0 && py < height) {
-                            int outPos = (py * width + px) * 4;
-
-                            outputPixels[outPos + 0] = clampedR;  // R
-                            outputPixels[outPos + 1] = clampedG;  // G
-                            outputPixels[outPos + 2] = clampedB;  // B
-                            outputPixels[outPos + 3] = 255;       // A
+                            int writePos = (py * width + px) * 4;
+                            outputPixels[writePos + 0] = clampedR;
+                            outputPixels[writePos + 1] = clampedG;
+                            outputPixels[writePos + 2] = clampedB;
+                            outputPixels[writePos + 3] = 255;
                         }
                     }
                 }

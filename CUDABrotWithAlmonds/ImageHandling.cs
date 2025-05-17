@@ -545,10 +545,52 @@ namespace CUDABrotWithAlmonds
             return clone;
         }
 
+		public void ImportGif()
+		{
+			using OpenFileDialog ofd = new()
+			{
+				InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+				Filter = @"GIF Files|*.gif",
+				Multiselect = false,
+				RestoreDirectory = true
+			};
+
+			if (ofd.ShowDialog() == DialogResult.OK)
+			{
+				string filepath = ofd.FileName;
+
+				using Bitmap gif = new(filepath);
+				FrameDimension dimension = FrameDimension.Time;
+				int frameCount = gif.GetFrameCount(dimension);
+
+				for (int i = 0; i < frameCount; i++)
+				{
+					// Aktives Frame setzen
+					gif.SelectActiveFrame(dimension, i);
+
+					// Kopie erzeugen, da gif bei jedem Frame nur das interne Bild wechselt
+					Bitmap frameCopy = new Bitmap(gif.Width, gif.Height);
+					using (Graphics g = Graphics.FromImage(frameCopy))
+					{
+						g.DrawImageUnscaled(gif, 0, 0);
+					}
+
+					// Neues ImageObject erstellen
+					ImageObject imgObj = new(frameCopy, Path.GetFileNameWithoutExtension(filepath) + i.ToString("D3"));
+
+					// Zur Liste hinzufügen
+					this.Images.Add(imgObj);
+				}
+			}
+
+			// Liste aktualisieren
+			this.FillImagesListBox();
+		}
+
 
 	}
 
-    public class ImageObject
+	public class ImageObject
     {
         // ----- ----- ATTRIBUTES ----- ----- \\
         public string Name = "image";
