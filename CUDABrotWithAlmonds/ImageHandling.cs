@@ -33,9 +33,11 @@ namespace CUDABrotWithAlmonds
 
         public Image? CurrentImage => this.CurrentObject?.Img ?? null;
 
+		public bool ShowCrosshair { get; set; }
 
-        // ----- ----- CONSTRUCTOR ----- ----- \\
-        public ImageHandling(string repopath, ListBox imageslistbox, PictureBox viewpicturebox, NumericUpDown? zoomNumeric = null, Label? metalabel = null)
+
+		// ----- ----- CONSTRUCTOR ----- ----- \\
+		public ImageHandling(string repopath, ListBox imageslistbox, PictureBox viewpicturebox, NumericUpDown? zoomNumeric = null, Label? metalabel = null)
         {
             // Set attributes
             this.Repopath = repopath;
@@ -54,7 +56,20 @@ namespace CUDABrotWithAlmonds
             this.ImagesList.SelectedIndexChanged += (s, e) =>
             {
                 this.ViewPBox.Image = this.CurrentImage;
-                this.MetaLabel.Text = this.CurrentObject?.GetMetaString() ?? "No image selected";
+                if (this.ShowCrosshair && this.CurrentImage != null)
+				{
+					// Render crosshair
+					Bitmap bitmap = new(this.CurrentImage);
+					using (Graphics g = Graphics.FromImage(bitmap))
+					{
+						Pen pen = new(Color.Red, 2);
+						g.DrawLine(pen, this.CurrentImage.Width / 2, 0, this.CurrentImage.Width / 2, this.CurrentImage.Height);
+						g.DrawLine(pen, 0, this.CurrentImage.Height / 2, this.CurrentImage.Width, this.CurrentImage.Height / 2);
+					}
+                    this.ViewPBox.Image = bitmap;
+					this.ViewPBox.Invalidate();
+				}
+				this.MetaLabel.Text = (this.CurrentObject?.GetMetaString() ?? "No image selected") + $"    ({this.Images.Count})";
             };
             this.PropertyChanged += (s, e) =>
             {

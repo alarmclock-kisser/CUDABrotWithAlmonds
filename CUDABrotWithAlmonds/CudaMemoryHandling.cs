@@ -54,7 +54,7 @@ namespace CUDABrotWithAlmonds
 			if (obj == null)
 			{
 				// Log
-				this.Log($"Buffer not found", pointer.ToString(), 1);
+				this.Log($"Couldn't find", "<" + pointer + ">", 1);
 				
 				return null;
 			}
@@ -130,12 +130,15 @@ namespace CUDABrotWithAlmonds
 			return length;
 		}
 
-		public IntPtr PushData<T>(IEnumerable<T> data) where T : unmanaged
+		public IntPtr PushData<T>(IEnumerable<T> data, bool silent = false) where T : unmanaged
 		{
 			// Check data
 			if (data == null || !data.Any())
 			{
-				this.Log("No data to push");
+				if (!silent)
+				{
+					this.Log("No data to push", "", 1);
+				}
 				return 0;
 			}
 
@@ -143,14 +146,17 @@ namespace CUDABrotWithAlmonds
 			IntPtr length = (nint) data.LongCount();
 
 			// Allocate buffer & copy data
-			CudaDeviceVariable<T> buffer = new CudaDeviceVariable<T>(length);
+			CudaDeviceVariable<T> buffer = new(length);
 			buffer.CopyToDevice(data.ToArray());
 
 			// Get pointer
 			IntPtr pointer = buffer.DevicePointer.Pointer;
 
 			// Log
-			this.Log($"Pushed {length} bytes to device", pointer.ToString(), 1);
+			if (!silent)
+			{
+				this.Log($"Pushed {length / 1024} kB", "<" + pointer + ">", 1);
+			}
 
 			// Create obj
 			CudaBuffer obj = new()
@@ -170,7 +176,7 @@ namespace CUDABrotWithAlmonds
 			return pointer;
 		}
 
-		public T[] PullData<T>(IntPtr pointer, bool free = false) where T : unmanaged
+		public T[] PullData<T>(IntPtr pointer, bool free = false, bool silent = false) where T : unmanaged
 		{
 			// Get buffer
 			CudaBuffer? obj = this.GetBuffer(pointer);
@@ -180,16 +186,19 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Create array with long count
-			T[] data = new T[(long) obj.Length];
+			T[] data = new T[obj.Length];
 
 			// Get device pointer
-			CUdeviceptr ptr = new CUdeviceptr(pointer);
+			CUdeviceptr ptr = new(pointer);
 
 			// Copy data to host from device pointer
 			this.Context.CopyToHost(data, ptr);
 
 			// Log
-			this.Log($"Pulled {obj.Length} bytes from device", pointer.ToString(), 1);
+			if (!silent)
+			{
+				this.Log($"Pulled {obj.Size / 1024} kB", "<" + pointer + ">", 1);
+			}
 
 			// Free buffer
 			if (free)
@@ -204,16 +213,13 @@ namespace CUDABrotWithAlmonds
 			return data;
 		}
 
-		public IntPtr AllocateBuffer<T>(IntPtr length) where T : unmanaged
+		public IntPtr AllocateBuffer<T>(IntPtr length, bool silent = false) where T : unmanaged
 		{
 			// Allocate buffer
 			CudaDeviceVariable<T> buffer = new(length);
 			
 			// Get pointer
 			IntPtr pointer = buffer.DevicePointer.Pointer;
-			
-			// Log
-			this.Log($"Allocated {length} bytes on device", pointer.ToString(), 1);
 			
 			// Create obj
 			CudaBuffer obj = new()
@@ -222,6 +228,12 @@ namespace CUDABrotWithAlmonds
 				Length = length,
 				Type = typeof(T)
 			};
+
+			// Log
+			if (!silent)
+			{
+				this.Log($"Allocated {length / 1024} kB", "<" + pointer + ">", 1);
+			}
 
 			// Add to dict
 			this.Buffers.Add(obj);
@@ -238,7 +250,7 @@ namespace CUDABrotWithAlmonds
 			long totalSize = this.Buffers.Sum(x => (long) x.Length * Marshal.SizeOf(x.Type));
 
 			// Get total memory
-			long totalAvailable = this.GetTotalMemoryAvailable() - this.Context.GetFreeDeviceMemorySize();
+			long totalAvailable = this.GetTotalMemory() - this.Context.GetFreeDeviceMemorySize();
 			if (actual)
 			{
 				totalSize = totalAvailable;
@@ -253,7 +265,7 @@ namespace CUDABrotWithAlmonds
 			return totalSize;
 		}
 
-		public long GetTotalMemoryAvailable(bool asMegabytes = false)
+		public long GetTotalMemory(bool asMegabytes = false)
 		{
 			// Get total memory
 			long totalSize = this.Context.GetTotalDeviceMemorySize();
@@ -273,12 +285,11 @@ namespace CUDABrotWithAlmonds
 			long totalSize = this.GetTotalMemoryUsage(true, true);
 
 			// Get total memory available
-			long totalAvailable = this.GetTotalMemoryAvailable(true);
+			long totalAvailable = this.GetTotalMemory(true);
 
 			// Update progress bar
 			this.VramBar.Maximum = (int) totalAvailable;
 			this.VramBar.Value = (int) totalSize;
-			this.VramBar.Text = $"{totalSize} MB / {totalAvailable} MB";
 		}
 	}
 
@@ -291,7 +302,7 @@ namespace CUDABrotWithAlmonds
 		public IntPtr Length { get; set; }
 		public Type Type { get; set; } = typeof(void);
 
-
+		public long Size => this.Length * Marshal.SizeOf(this.Type);
 
 
 

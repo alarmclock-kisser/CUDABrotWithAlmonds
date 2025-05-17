@@ -53,7 +53,19 @@ namespace CUDABrotWithAlmonds
 
 		public int GetDeviceCount()
 		{
-			int deviceCount = CudaContext.GetDeviceCount();
+			// Trycatch
+
+			int deviceCount = 0;
+
+			try
+			{
+				deviceCount = CudaContext.GetDeviceCount();
+			}
+			catch (CudaException ex)
+			{
+				this.Log("Couldn't get device count", ex.Message, 1);
+			}
+
 			return deviceCount;
 		}
 
@@ -64,8 +76,27 @@ namespace CUDABrotWithAlmonds
 
 			for (int i = 0; i < deviceCount; i++)
 			{
-				CUdevice device = new CUdevice(i);
-				devices.Add(device);
+				// Trycatch
+				try
+				{
+					CUdevice device = new(i);
+					devices.Add(device);
+				}
+				catch (CudaException ex)
+				{
+					this.Log("Couldn't get device # " + i, ex.Message, 1);
+				}
+				catch (Exception ex)
+				{
+					this.Log("Couldn't get device # " + i, ex.Message, 1);
+				}
+				finally
+				{
+					if (devices.Count == 0)
+					{
+						this.Log("No devices found", "", 1);
+					}
+				}
 			}
 
 			return devices;
@@ -75,13 +106,36 @@ namespace CUDABrotWithAlmonds
 		{
 			index = index == -1 ? this.Index : index;
 
-			return CudaContext.GetDeviceComputeCapability(index);
+			Version ver = new(0, 0);
+
+			try
+			{
+				ver = CudaContext.GetDeviceComputeCapability(index);
+			}
+			catch (CudaException ex)
+			{
+				this.Log("Couldn't get device capability", ex.Message, 1);
+			}
+
+			return ver;
 		}
 
 		public string GetName(int index = -1)
 		{
 			index = index == -1 ? this.Index : index;
-			return CudaContext.GetDeviceName(index);
+
+			string name = "N/A";
+
+			try
+			{
+				name = CudaContext.GetDeviceName(index);
+			}
+			catch (CudaException ex)
+			{
+				this.Log("Couldn't get device name", ex.Message, 1);
+			}
+
+			return name;
 		}
 
 		public void FillDevicesCombobox(ComboBox? comboBox = null)
@@ -108,7 +162,7 @@ namespace CUDABrotWithAlmonds
 			index = index == -1 ? this.Index : index;
 			if (index < 0 || index >= this.GetDeviceCount())
 			{
-				this.Log("Invalid device index", "Index out of range");
+				this.Log("Invalid device id", "Out of range");
 				return;
 			}			
 
@@ -119,7 +173,7 @@ namespace CUDABrotWithAlmonds
 			this.MemoryH = new CudaMemoryHandling(this.Repopath, this.LogList, this.Context, this.VramBar);
 			this.KernelH = new CudaKernelHandling(this.Repopath, this.LogList, this.Context, this.MemoryH, this.KernelsCombo);
 
-			this.Log($"Device {index} initialized", this.GetName().Split(' ').FirstOrDefault() ?? "N/A");
+			this.Log($"Initialized #{index}", this.GetName().Split(' ').FirstOrDefault() ?? "N/A");
 
 		}
 

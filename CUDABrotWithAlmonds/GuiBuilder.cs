@@ -1,4 +1,7 @@
 ﻿
+using ManagedCuda.BasicTypes;
+using System.Drawing.Drawing2D;
+
 namespace CUDABrotWithAlmonds
 {
 	public class GuiBuilder
@@ -9,20 +12,23 @@ namespace CUDABrotWithAlmonds
 		private CudaContextHandling ContextH;
 		private ImageHandling ImageH;
 		private Panel ArgumentsPanel;
+		private CheckBox SilenceCheck;
 
 
 
 		private List<NumericUpDown> NumericsList = [];
 		private List<Label> LabelList = [];
+		private string CuPath => Path.Combine(this.Repopath, "Resources", "Kernels", "CU");
 
 		// ----- ----- CONSTRUCTORS ----- ----- \\
-		public GuiBuilder(string repopath, ListBox listBox_log, CudaContextHandling contextH, ImageHandling imageH, Panel panel_kernel)
+		public GuiBuilder(string repopath, ListBox listBox_log, CudaContextHandling contextH, ImageHandling imageH, Panel panel_kernel, CheckBox? silenceCheckBox = null)
 		{
 			this.Repopath = repopath;
 			this.LogList = listBox_log;
 			this.ContextH = contextH;
 			this.ImageH = imageH;
 			this.ArgumentsPanel = panel_kernel;
+			this.SilenceCheck = silenceCheckBox ?? new CheckBox();
 
 			// Register events
 			this.ArgumentsPanel.MouseDoubleClick += (s, e) => this.BuildPanel();
@@ -43,7 +49,7 @@ namespace CUDABrotWithAlmonds
 		}
 
 
-		public void BuildPanel(float inputWidthPart = 0.55f)
+		public void BuildPanel(float inputWidthPart = 0.55f, bool optionalArgsOnly = false)
 		{
 			// Clear panel & get dimensions
 			this.ArgumentsPanel.Controls.Clear();
@@ -54,7 +60,7 @@ namespace CUDABrotWithAlmonds
 			int inputWidth = (int) (maxWidth * inputWidthPart);
 
 			// Get kernelArgs
-			Dictionary<string, Type> arguments = this.ContextH.KernelH?.GetArguments() ?? [];
+			Dictionary<string, Type> arguments = this.ContextH.KernelH?.GetArguments(null, this.SilenceCheck.Checked) ?? [];
 			var allArgNames = arguments.Keys.ToList();
 
 			// First pass: Create all non-RGB controls
@@ -82,7 +88,7 @@ namespace CUDABrotWithAlmonds
 					Name = $"label_arg_{argName}",
 					Text = argName,
 					Location = new Point(10, y),
-					Size = new Size(maxWidth - 20 - inputWidth, 23)
+					Size = new Size(maxWidth - 25 - inputWidth, 23)
 				};
 				this.ArgumentsPanel.Controls.Add(label);
 				this.LabelList.Add(label);
@@ -92,14 +98,14 @@ namespace CUDABrotWithAlmonds
 				{
 					Name = $"input_arg_{argName}",
 					Location = new Point(maxWidth - inputWidth, y),
-					Size = new Size(inputWidth - 10, 23),
-					Minimum = GetMinimumValue(argType),
-					Maximum = GetMaximumValue(argType),
-					Value = GetDefaultValue(argName, argType),
+					Size = new Size(inputWidth - 20, 23),
+					Minimum = this.GetMinimumValue(argType),
+					Maximum = this.GetMaximumValue(argType),
+					Value = this.GetDefaultValue(argName, argType),
 					DecimalPlaces = argType == typeof(float) ? 4 :
 								  argType == typeof(double) ? 8 :
 								  argType == typeof(decimal) ? 12 : 0,
-					Increment = GetIncrementValue(argType)
+					Increment = this.GetIncrementValue(argType)
 				};
 
 				// Special formatting
@@ -107,8 +113,13 @@ namespace CUDABrotWithAlmonds
 				{
 					numeric.BackColor = Color.LightCoral;
 					numeric.Enabled = false;
+
+					if (optionalArgsOnly)
+					{
+						continue;
+					}
 				}
-				else if (IsSpecialParameter(argName))
+				else if (this.IsSpecialParameter(argName))
 				{
 					numeric.BackColor = Color.LightGoldenrodYellow;
 					numeric.ReadOnly = true;
@@ -118,6 +129,11 @@ namespace CUDABrotWithAlmonds
 							numeric.ReadOnly = !numeric.ReadOnly;
 						}
 					};
+
+					if (optionalArgsOnly)
+					{
+						continue;
+					}
 				}
 
 				this.ArgumentsPanel.Controls.Add(numeric);
@@ -144,21 +160,21 @@ namespace CUDABrotWithAlmonds
 						Name = $"button_arg_{colorName}",
 						Text = $"{colorName} Color",
 						Location = new Point(maxWidth - inputWidth, y),
-						Size = new Size(inputWidth - 10, 23),
+						Size = new Size(inputWidth - 25, 23),
 						BackColor = Color.FromArgb(
-							(int) GetDefaultValue(name1, typeof(int)),
-							(int) GetDefaultValue(name2, typeof(int)),
-							(int) GetDefaultValue(name3, typeof(int))),
+							(int) this.GetDefaultValue(name1, typeof(int)),
+							(int) this.GetDefaultValue(name2, typeof(int)),
+							(int) this.GetDefaultValue(name3, typeof(int))),
 						Tag = new string[] { name1, name2, name3 } // Store component names
 					};
-					UpdateButtonTextColor(colorButton);
+					this.UpdateButtonTextColor(colorButton);
 
 					colorButton.Click += (s, e) => {
 						ColorDialog cd = new() { Color = colorButton.BackColor };
 						if (cd.ShowDialog() == DialogResult.OK)
 						{
 							colorButton.BackColor = cd.Color;
-							UpdateButtonTextColor(colorButton);
+							this.UpdateButtonTextColor(colorButton);
 						}
 					};
 
@@ -181,13 +197,14 @@ namespace CUDABrotWithAlmonds
 				}
 			}
 
-			// Add scrollbar if needed
+			// Add vertical scrollbar if needed
 			this.ArgumentsPanel.AutoScroll = y > maxHeight;
+
 		}
 
 		public object[] GetArgumentValues()
 		{
-			var argsDefinitions = this.ContextH.KernelH?.GetArguments() ?? [];
+			var argsDefinitions = this.ContextH.KernelH?.GetArguments(null, this.SilenceCheck.Checked) ?? [];
 			object[] values = new object[argsDefinitions.Count];
 			var allArgNames = argsDefinitions.Keys.ToList();
 
@@ -284,7 +301,7 @@ namespace CUDABrotWithAlmonds
 
 			return values;
 		}
-		// Helper methods
+		
 		private decimal GetMinimumValue(Type type) => type == typeof(char) ? byte.MinValue :
 				   type == typeof(sbyte) ? sbyte.MinValue :
 				   type == typeof(short) ? short.MinValue :
@@ -344,6 +361,132 @@ namespace CUDABrotWithAlmonds
 				   argName.Contains("bit", StringComparison.OrdinalIgnoreCase);
 
 		private void UpdateButtonTextColor(Button button) => button.ForeColor = button.BackColor.GetBrightness() < 0.5 ? Color.White : Color.Black;
+
+
+
+		public Form OpenKernelEditor(Size? size = null)
+		{
+			// Verify size
+			size ??= new Size(800, 600);
+
+			// Create form
+			Form form = new()
+			{
+				Text = "Kernel Editor",
+				Size = size.Value,
+				StartPosition = FormStartPosition.CenterParent,
+				FormBorderStyle = FormBorderStyle.SizableToolWindow,
+				MaximizeBox = false,
+				MinimizeBox = false
+			};
+
+			// Form has big textBox and 2 buttons at the bottom right
+			Button button_confirm = new()
+			{
+				Name = "button_confirm",
+				Text = "Confirm",
+				Location = new Point(form.ClientSize.Width - 120, form.ClientSize.Height - 60),
+				Size = new Size(100, 30),
+				Enabled = false
+			};
+
+			Button button_cancel = new()
+			{
+				Name = "button_cancel",
+				Text = "Cancel",
+				Location = new Point(form.ClientSize.Width - 240, form.ClientSize.Height - 60),
+				Size = new Size(100, 30)
+			};
+
+			TextBox textBox = new()
+			{
+				Name = "textBox_kernel",
+				Multiline = true,
+				ScrollBars = ScrollBars.Both,
+				WordWrap = false,
+				Location = new Point(10, 10),
+				Size = new Size(form.ClientSize.Width - 40, form.ClientSize.Height - 80)
+			};
+
+			// Register events
+			textBox.KeyDown += (s, keyEventArgs) => // Füge keyEventArgs hinzu
+			{
+				// Prüfe, ob die gedrückte Taste die Enter-Taste ist
+				if (keyEventArgs.KeyCode == Keys.Enter)
+				{
+					// Verhindere, dass die Enter-Taste eine Standardaktion ausführt (z.B. Piepen)
+					keyEventArgs.Handled = true;
+
+					// Rufe die Kernel-Kompilierung auf
+					string? name = this.ContextH.KernelH?.PrecompileKernelString(textBox.Text, this.SilenceCheck.Checked);
+
+					if (string.IsNullOrEmpty(name))
+					{
+						// Wenn die Kompilierung fehlschlägt
+						MessageBox.Show("Failed to compile kernel.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+						button_confirm.Enabled = false; // Button deaktivieren
+						return;
+					}
+
+					// Wenn die Kompilierung erfolgreich ist
+					button_confirm.Enabled = true;
+				}
+				// Wenn eine andere Taste als Enter gedrückt wird, passiert nichts in diesem Handler
+			};
+
+			button_cancel.Click += (s, e) => form.Close();
+
+			button_confirm.Click += (s, e) =>
+			{
+				string? name = this.ContextH.KernelH?.PrecompileKernelString(textBox.Text, this.SilenceCheck.Checked);
+				if (string.IsNullOrEmpty(name))
+				{
+					MessageBox.Show("Failed to compile kernel.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					return;
+				}
+
+				// Write file with name to cupath
+				string file = Path.Combine(this.CuPath, $"{name}.cu");
+				File.WriteAllText(file, textBox.Text);
+
+				// Compile kernel
+				string? ptxPath = this.ContextH.KernelH?.CompileKernel(file, this.SilenceCheck.Checked);
+				if (string.IsNullOrEmpty(ptxPath))
+				{
+					MessageBox.Show("Failed to compile kernel.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					return;
+				}
+				this.ContextH.KernelH?.LoadKernel(name, this.SilenceCheck.Checked);
+				if (this.ContextH.KernelH?.Kernel == null)
+				{
+					MessageBox.Show("Failed to load kernel.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+					return;
+				}
+			};
+
+			form.FormClosed += (s, e) =>
+			{
+				// Dispose of controls
+				textBox.Dispose();
+				button_confirm.Dispose();
+				button_cancel.Dispose();
+
+				// Reload kernels
+				this.ContextH.KernelH?.FillKernelsCombo();
+
+				form.Dispose();
+			};
+
+			// Add controls to form
+			form.Controls.Add(textBox);
+			form.Controls.Add(button_confirm);
+			form.Controls.Add(button_cancel);
+
+			// Show form
+			form.ShowDialog(this.ArgumentsPanel.FindForm());
+
+			return form;
+		}
 
 
 	}

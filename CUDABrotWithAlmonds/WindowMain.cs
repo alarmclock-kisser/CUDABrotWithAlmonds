@@ -23,7 +23,15 @@ namespace CUDABrotWithAlmonds
 
 		private GuiBuilder GuiB;
 
-
+		public List<string> ExplorationKernelSubstrings = new()
+		{
+			"mandelbrot",
+			"newton",
+			"julia",
+			"burning",
+			"tricorn",
+			"multibrot"
+		};
 
 		private bool MandelbrotMode = false;
 		private bool isDragging = false;
@@ -32,6 +40,8 @@ namespace CUDABrotWithAlmonds
 		private bool kernelExecutionRequired;
 		private float mandelbrotZoomFactor = 1.0f;
 		private Stopwatch stopwatch = new();
+		private bool isProcessing;
+		private Dictionary<NumericUpDown, int> previousNumericValues = [];
 
 		// ----- ----- CONSTRUCTORS ----- ----- \\
 		public WindowMain()
@@ -55,6 +65,8 @@ namespace CUDABrotWithAlmonds
 			this.listBox_images.DoubleClick += (s, e) => this.MoveImage(this.listBox_images.SelectedIndex);
 			this.listBox_log.MouseHover += (s, e) => this.ShowLogTooltip();
 			this.comboBox_kernels.SelectedIndexChanged += (s, e) => this.LoadKernel(this.comboBox_kernels.SelectedItem?.ToString() ?? "");
+			this.RegisterNumericToSecondPow(this.numericUpDown_size);
+			this.RegisterNumericToSecondPow(this.numericUpDown_createSize);
 
 			// Select first device
 			if (this.comboBox_devices.Items.Count > 0)
@@ -71,6 +83,23 @@ namespace CUDABrotWithAlmonds
 
 
 		// ----- ----- METHODS ----- ----- \\
+		public void ReselectImage()
+		{
+			int index = this.listBox_images.SelectedIndex;
+
+			this.ImageH.FillImagesListBox();
+
+			if (index >= 0 && index < this.listBox_images.Items.Count)
+			{
+				this.listBox_images.SelectedIndex = index;
+			}
+			else
+			{
+				this.listBox_images.SelectedIndex = -1;
+			}
+
+		}
+
 		public void ShowLogTooltip(int index = -1)
 		{
 			if (index == -1 && this.listBox_log.SelectedIndex != -1)
@@ -111,7 +140,7 @@ namespace CUDABrotWithAlmonds
 				Stopwatch sw = Stopwatch.StartNew();
 
 				// Create buffer
-				IntPtr pointer = this.ContextH.MemoryH?.PushData(bytes) ?? 0;
+				IntPtr pointer = this.ContextH.MemoryH?.PushData(bytes, this.checkBox_silent.Checked) ?? 0;
 
 				// STOPWATCH
 				sw.Stop();
@@ -134,7 +163,7 @@ namespace CUDABrotWithAlmonds
 				Stopwatch sw = Stopwatch.StartNew();
 
 				// Move to Host
-				byte[] bytes = this.ContextH.MemoryH?.PullData<byte>(image.Pointer, true) ?? [];
+				byte[] bytes = this.ContextH.MemoryH?.PullData<byte>(image.Pointer, true, this.checkBox_silent.Checked) ?? [];
 				if (bytes.Length == 0)
 				{
 					MessageBox.Show("Failed to pull data from CUDA", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -159,25 +188,20 @@ namespace CUDABrotWithAlmonds
 		public void LoadKernel(string kernelName = "")
 		{
 			// Load kernel
-			this.ContextH.KernelH?.LoadKernel(kernelName);
+			this.ContextH.KernelH?.LoadKernel(kernelName, this.checkBox_silent.Checked);
 			if (this.ContextH.KernelH?.Kernel == null)
 			{
 				MessageBox.Show("Failed to load kernel", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
 				return;
 			}
 
-			// Toggle mandelbrot mode
-			if (kernelName.ToLower().Contains("mandelbrot"))
-			{
-				this.ToggleMandelbrotMode(true);
-			}
-			else
-			{
-				this.ToggleMandelbrotMode(false);
-			}
+			// Toggle mandelbrot mode if kernel name contains any of the exploration substrings
+			bool isExplorationMode = this.ExplorationKernelSubstrings.Any(sub => kernelName.Contains(sub, StringComparison.OrdinalIgnoreCase));
+
+			this.ToggleMandelbrotMode(isExplorationMode);
 
 			// Get arguments
-			this.GuiB.BuildPanel();
+			this.GuiB.BuildPanel(0.55f, this.checkBox_optionalArgsOnly.Checked);
 
 		}
 
@@ -220,22 +244,16 @@ namespace CUDABrotWithAlmonds
 			Stopwatch sw = Stopwatch.StartNew();
 
 			// Load kernel
-			this.ContextH.KernelH?.LoadKernel(kernelName);
+			this.ContextH.KernelH?.LoadKernel(kernelName, this.checkBox_silent.Checked);
 			if (this.ContextH.KernelH?.Kernel == null)
 			{
 				MessageBox.Show("Failed to load kernel", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
 				return;
 			}
 
-			// If kernel is Mandelbrot, set mode
-			if (kernelName.ToLower().Contains("mandelbrot"))
-			{
-				this.ToggleMandelbrotMode(true);
-			}
-			else
-			{
-				this.ToggleMandelbrotMode(false);
-			}
+			// If kernel is Exporable, set mode
+			bool isExplorationMode = this.ExplorationKernelSubstrings.Any(sub => kernelName.Contains(sub, StringComparison.OrdinalIgnoreCase));
+			this.ToggleMandelbrotMode(isExplorationMode);
 
 			// Get image attributes for kernel call
 			IntPtr pointer = image.Pointer;
@@ -248,7 +266,7 @@ namespace CUDABrotWithAlmonds
 			object[] args = this.GuiB.GetArgumentValues();
 
 			// Call exec kernel -> pointer
-			image.Pointer = this.ContextH.KernelH?.ExecuteKernel(pointer, width, height, channels, bitdepth, args) ?? image.Pointer;
+			image.Pointer = this.ContextH.KernelH?.ExecuteKernel(pointer, width, height, channels, bitdepth, args, this.checkBox_silent.Checked) ?? image.Pointer;
 
 			// STOPWATCH
 			sw.Stop();
@@ -261,10 +279,17 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// If kernel is Mandelbrot, cache image with interval
-			if (this.MandelbrotMode && image.Img != null)
+			if (this.MandelbrotMode && image.Img != null && (this.checkBox_record.Checked || IsKeyLocked(Keys.CapsLock)))
 			{
 				this.Recorder.AddImage(image.Img, this.stopwatch.ElapsedMilliseconds);
 				this.stopwatch.Restart(); // Restart stopwatch
+			}
+
+			// Reset cache if checkbox is unchecked || cache isnt empty || not CAPS locked
+			if (!this.checkBox_record.Checked && this.Recorder.CachedImages.Count != 0 && !IsKeyLocked(Keys.CapsLock))
+			{
+				this.Recorder.CachedImages.Clear();
+				this.Recorder.CountLabel.Text = $"Images: -";
 			}
 
 			// Add modification to image
@@ -330,7 +355,7 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Load kernel
-			this.ContextH.KernelH?.LoadKernel(kernelName);
+			this.ContextH.KernelH?.LoadKernel(kernelName, this.checkBox_silent.Checked);
 			if (this.ContextH.KernelH?.Kernel == null)
 			{
 				MessageBox.Show("Failed to load kernel", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -375,6 +400,65 @@ namespace CUDABrotWithAlmonds
 			// Create GIF
 			this.button_createGif_Click(this, EventArgs.Empty);
 		}
+
+		public void RegisterNumericToSecondPow(NumericUpDown numeric)
+		{
+			// Initialwert speichern
+			this.previousNumericValues.Add(numeric, (int) numeric.Value);
+
+			numeric.ValueChanged += (s, e) =>
+			{
+				// Verhindere rekursive Aufrufe
+				if (this.isProcessing)
+				{
+					return;
+				}
+
+				this.isProcessing = true;
+
+				try
+				{
+					int newValue = (int) numeric.Value;
+					int oldValue = this.previousNumericValues[numeric];
+					int max = (int) numeric.Maximum;
+					int min = (int) numeric.Minimum;
+
+					// Nur verarbeiten, wenn sich der Wert tats chlich ge ndert hat
+					if (newValue != oldValue)
+					{
+						int calculatedValue;
+
+						if (newValue > oldValue)
+						{
+							// Verdoppeln, aber nicht  ber Maximum
+							calculatedValue = Math.Min(oldValue * 2, max);
+						}
+						else if (newValue < oldValue)
+						{
+							// Halbieren, aber nicht unter Minimum
+							calculatedValue = Math.Max(oldValue / 2, min);
+						}
+						else
+						{
+							calculatedValue = oldValue;
+						}
+
+						// Nur aktualisieren wenn notwendig
+						if (calculatedValue != newValue)
+						{
+							numeric.Value = calculatedValue;
+						}
+
+						this.previousNumericValues[numeric] = calculatedValue;
+					}
+				}
+				finally
+				{
+					this.isProcessing = false;
+				}
+			};
+		}
+
 
 
 		// Mandelbrot events
@@ -567,8 +651,8 @@ namespace CUDABrotWithAlmonds
 
 		private void button_createImage_Click(object sender, EventArgs e)
 		{
-			int size = Math.Min(this.pictureBox_view.Width, this.pictureBox_view.Height);
-			this.ImageH.CreateEmpty(Color.White, size, "");
+			int dim = (int) this.numericUpDown_createSize.Value;
+			this.ImageH.CreateEmpty(Color.White, dim, "");
 			this.ImageH.FitZoom();
 		}
 
@@ -587,16 +671,20 @@ namespace CUDABrotWithAlmonds
 
 		private void button_executeOOP_Click(object? sender, EventArgs e)
 		{
+			string kernelName = this.comboBox_kernels.SelectedItem?.ToString() ?? "";
+
 			// If CTRL down: Execute on all images
 			if (ModifierKeys == Keys.Control)
 			{
-				this.ExecuteKernelOOPAll(this.comboBox_kernels.SelectedItem?.ToString() ?? "");
+				this.ExecuteKernelOOPAll(kernelName);
 				return;
 			}
 
-			bool addMod = !((this.comboBox_kernels.SelectedItem?.ToString() ?? "").ToLower().Contains("mandelbrot"));
+			bool addMod = this.ExplorationKernelSubstrings.Any(sub => kernelName.Contains(sub, StringComparison.OrdinalIgnoreCase));
 
-			this.ExecuteKernelOOP(-1, this.comboBox_kernels.SelectedItem?.ToString() ?? "");
+			this.ToggleMandelbrotMode(addMod);
+
+			this.ExecuteKernelOOP(-1, this.comboBox_kernels.SelectedItem?.ToString() ?? "", addMod);
 		}
 
 		private void button_reset_Click(object sender, EventArgs e)
@@ -655,6 +743,38 @@ namespace CUDABrotWithAlmonds
 
 			// Reload image from file
 			this.ImageH.CurrentObject?.ResetImage();
+		}
+
+		private void checkBox_crosshair_CheckedChanged(object sender, EventArgs e)
+		{
+			// Toggle crosshair in picturebox
+			if (this.checkBox_crosshair.Checked)
+			{
+				this.ImageH.ShowCrosshair = true;
+			}
+			else
+			{
+				this.ImageH.ShowCrosshair = false;
+			}
+
+			// Refresh picturebox
+			this.ReselectImage();
+		}
+
+		private void button_addKernel_Click(object sender, EventArgs e)
+		{
+			// Call GuiB to open kernel editor (Form)
+			this.GuiB.OpenKernelEditor();
+		}
+
+		private void comboBox_kernels_SelectedIndexChanged(object sender, EventArgs e)
+		{
+
+		}
+
+		private void checkBox_optionalArgsOnly_CheckedChanged(object sender, EventArgs e)
+		{
+			this.GuiB.BuildPanel(0.55f, this.checkBox_optionalArgsOnly.Checked);
 		}
 	}
 }

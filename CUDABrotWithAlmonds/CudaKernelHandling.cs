@@ -41,7 +41,7 @@ namespace CUDABrotWithAlmonds
 			// this.KernelsCombo.SelectedIndexChanged += (s, e) => this.LoadKernel(this.KernelsCombo.SelectedItem?.ToString() ?? "");
 
 			// Compile all kernels
-			this.CompileAll();
+			this.CompileAll(true, true);
 
 			// Fill kernels combobox
 			this.FillKernelsCombo();
@@ -64,12 +64,12 @@ namespace CUDABrotWithAlmonds
 		public void Dispose()
 		{
 			// Dispose of kernels
-
+			this.UnloadKernel();
 		}
 
-		public List<string> GetPtxFiles()
+		public List<string> GetPtxFiles(string? path = null)
 		{
-			string path = Path.Combine(this.KernelPath, "PTX");
+			path ??= Path.Combine(this.KernelPath, "PTX");
 
 			// Get all PTX files in kernel path
 			string[] files = Directory.GetFiles(path, "*.ptx").Select(f => Path.GetFullPath(f)).ToArray();
@@ -78,9 +78,9 @@ namespace CUDABrotWithAlmonds
 			return files.ToList();
 		}
 
-		public List<string> GetCuFiles()
+		public List<string> GetCuFiles(string? path = null)
 		{
-			string path = Path.Combine(this.KernelPath, "CU");
+			path ??= Path.Combine(this.KernelPath, "CU");
 
 			// Get all CU files in kernel path
 			string[] files = Directory.GetFiles(path, "*.cu").Select(f => Path.GetFullPath(f)).ToArray();
@@ -89,14 +89,18 @@ namespace CUDABrotWithAlmonds
 			return files.ToList();
 		}
 
-		public void CompileAll()
+		public void CompileAll(bool silent = false, bool logErrors = false)
 		{
 			List<string> sourceFiles = this.SourceFiles;
 
 			// Compile all source files
 			foreach (string sourceFile in sourceFiles)
 			{
-				this.CompileKernel(sourceFile);
+				string? ptx = this.CompileKernel(sourceFile, silent);
+				if (string.IsNullOrEmpty(ptx) && logErrors)
+				{
+					this.Log("Compilation failed: ", Path.GetFileNameWithoutExtension(sourceFile), 1);
+				}
 			}
 		}
 
@@ -205,18 +209,21 @@ namespace CUDABrotWithAlmonds
 			}
 		}
 
-		public string CompileKernel(string filepath)
+		public string? CompileKernel(string filepath, bool silent = false)
 		{
 			if (this.Context == null)
 			{
-				this.Log("No CUDA context available", "", 1);
-				return "";
+				if (!silent)
+				{
+					this.Log("No CUDA available", "", 1);
+				}
+				return null;
 			}
 
 			// If file is not a .cu file, but raw kernel string, compile that
 			if (Path.GetExtension(filepath) != ".cu")
 			{
-				return this.CompileString(filepath);
+				return this.CompileString(filepath, silent);
 			}
 
 			string kernelName = Path.GetFileNameWithoutExtension(filepath);
@@ -224,7 +231,10 @@ namespace CUDABrotWithAlmonds
 			string logpath = Path.Combine(this.KernelPath, "Logs", kernelName + ".log");
 
 			Stopwatch sw = Stopwatch.StartNew();
-			this.Log("Compiling kernel " + kernelName);
+			if (!silent)
+			{
+				this.Log("Compiling kernel '" + kernelName + "'");
+			}
 
 			// Load kernel file
 			string kernelCode = File.ReadAllText(filepath);
@@ -236,17 +246,25 @@ namespace CUDABrotWithAlmonds
 			{
 				// Compile kernel
 				rtc.Compile([]);
+				string log = rtc.GetLogAsString();
 
-				if (rtc.GetLogAsString().Length > 0)
+				if (log.Length > 0)
 				{
-					this.Log("Kernel compiled with warnings", "", 1);
+					// Count double \n
+					int count = log.Split(["\n\n"], StringSplitOptions.None).Length - 1;
+					if (!silent)
+					{
+						this.Log("Compiled with warnings", count.ToString(), 1);
+					}
 					File.WriteAllText(logpath, rtc.GetLogAsString());
 				}
 
-
 				sw.Stop();
 				long deltaMicros = sw.ElapsedTicks / (Stopwatch.Frequency / (1000L * 1000L));
-				this.Log("Kernel compiled within " + deltaMicros.ToString("N0") + " µs", "Repo\\" + Path.GetRelativePath(this.Repopath, logpath), 2);
+				if (!silent)
+				{
+					this.Log("Compiled within " + deltaMicros + " µs", "Repo\\" + Path.GetRelativePath(this.Repopath, logpath), 1);
+				}
 
 				// Get ptx code
 				byte[] ptxCode = rtc.GetPTX();
@@ -255,7 +273,10 @@ namespace CUDABrotWithAlmonds
 				string ptxPath = Path.Combine(this.KernelPath, "PTX", kernelName + ".ptx");
 				File.WriteAllBytes(ptxPath, ptxCode);
 
-				this.Log("PTX code exported to " + ptxPath, "", 1);
+				if (!silent)
+				{
+					this.Log("PTX exported", ptxPath, 1);
+				}
 
 				return ptxPath;
 			}
@@ -264,17 +285,20 @@ namespace CUDABrotWithAlmonds
 				File.WriteAllText(logpath, rtc.GetLogAsString());
 				this.Log(ex.Message, ex.InnerException?.Message ?? "", 1);
 
-				return "";
+				return null;
 			}
 
 		}
 
-		public string CompileString(string kernelString)
+		public string? CompileString(string kernelString, bool silent = false)
 		{
 			if (this.Context == null)
 			{
-				this.Log("No CUDA context available", "", 1);
-				return "";
+				if (!silent)
+				{
+					this.Log("No CUDA available", "", 1);
+				}
+				return null;
 			}
 
 			string kernelName = kernelString.Split("void ")[1].Split("(")[0];
@@ -282,7 +306,10 @@ namespace CUDABrotWithAlmonds
 			string logpath = Path.Combine(this.KernelPath, "Logs", kernelName + ".log");
 
 			Stopwatch sw = Stopwatch.StartNew();
-			this.Log("Compiling kernel " + kernelName);
+			if (!silent)
+			{
+				this.Log("Compiling kernel '" + kernelName + "'");
+			}
 
 			// Load kernel file
 			string kernelCode = kernelString;
@@ -298,17 +325,27 @@ namespace CUDABrotWithAlmonds
 			{
 				// Compile kernel
 				rtc.Compile([]);
+				string log = rtc.GetLogAsString();
 
-				if (rtc.GetLogAsString().Length > 0)
+				if (log.Length > 0)
 				{
-					this.Log("Kernel compiled with warnings", "", 1);
+					// Count double \n
+					int count = log.Split(["\n\n"], StringSplitOptions.None).Length - 1;
+					if (!silent)
+					{
+						this.Log("Compiled with warnings", count.ToString(), 1);
+					}
 					File.WriteAllText(logpath, rtc.GetLogAsString());
 				}
 
 
 				sw.Stop();
 				long deltaMicros = sw.ElapsedTicks / (Stopwatch.Frequency / (1000L * 1000L));
-				this.Log("Kernel compiled in " + deltaMicros.ToString("N0") + " µs", "Repo\\" + Path.GetRelativePath(this.Repopath, logpath), 2);
+				if (!silent)
+				{
+					this.Log("Compiled within " + deltaMicros + " µs", "Repo\\" + Path.GetRelativePath(this.Repopath, logpath), 1);
+				}
+
 
 				// Get ptx code
 				byte[] ptxCode = rtc.GetPTX();
@@ -317,7 +354,10 @@ namespace CUDABrotWithAlmonds
 				string ptxPath = Path.Combine(this.KernelPath, "PTX", kernelName + ".ptx");
 				File.WriteAllBytes(ptxPath, ptxCode);
 
-				this.Log("PTX code exported to " + ptxPath, "", 1);
+				if (!silent)
+				{
+					this.Log("PTX exported", ptxPath, 1);
+				}
 
 				return ptxPath;
 			}
@@ -326,30 +366,134 @@ namespace CUDABrotWithAlmonds
 				File.WriteAllText(logpath, rtc.GetLogAsString());
 				this.Log(ex.Message, ex.InnerException?.Message ?? "", 1);
 
-				return "";
+				return null;
 			}
 		}
 
-		public IntPtr ExecuteKernel(IntPtr pointer, int width, int height, int channels, int bitdepth, object[] arguments)
+		public string? PrecompileKernelString(string kernelString, bool silent = false)
+		{
+			// Check contains "extern c"
+			if (!kernelString.Contains("extern \"C\""))
+			{
+				if (!silent)
+				{
+					this.Log("Kernel string does not contain 'extern \"C\"'", "", 1);
+				}
+				return null;
+			}
+
+			// Check contains "__global__ "
+			if (!kernelString.Contains("__global__"))
+			{
+				if (!silent)
+				{
+					this.Log("Kernel string does not contain '__global__'", "", 1);
+				}
+				return null;
+			}
+
+			// Check contains "void "
+			if (!kernelString.Contains("void "))
+			{
+				if (!silent)
+				{
+					this.Log("Kernel string does not contain 'void '", "", 1);
+				}
+				return null;
+			}
+
+			// Check contains int
+			if (!kernelString.Contains("int ") && !kernelString.Contains("long "))
+			{
+				if (!silent)
+				{
+					this.Log("Kernel string does not contain 'int ' (for array length)", "", 1);
+				}
+				return null;
+			}
+
+			// Check if every bracket is closed (even amount) for {} and () and []
+			int open = kernelString.Count(c => c == '{');
+			int close = kernelString.Count(c => c == '}');
+			if (open != close)
+			{
+				if (!silent)
+				{
+					this.Log("Kernel string has unbalanced brackets", " { } ", 1);
+				}
+				return null;
+			}
+			open = kernelString.Count(c => c == '(');
+			close = kernelString.Count(c => c == ')');
+			if (open != close)
+			{
+				if (!silent)
+				{
+					this.Log("Kernel string has unbalanced brackets", " ( ) ", 1);
+				}
+				return null;
+			}
+			open = kernelString.Count(c => c == '[');
+			close = kernelString.Count(c => c == ']');
+			if (open != close)
+			{
+				if (!silent)
+				{
+					this.Log("Kernel string has unbalanced brackets", " [ ] ", 1);
+				}
+				return null;
+			}
+
+			// Check if kernel contains "blockIdx.x" and "blockDim.x" and "threadIdx.x"
+			if (!kernelString.Contains("blockIdx.x") || !kernelString.Contains("blockDim.x") || !kernelString.Contains("threadIdx.x"))
+			{
+				if (!silent)
+				{
+					this.Log("Kernel string should contain 'blockIdx.x', 'blockDim.x' and 'threadIdx.x'", "", 2);
+				}
+			}
+
+			// Get name between "void " and "("
+			int start = kernelString.IndexOf("void ") + "void ".Length;
+			int end = kernelString.IndexOf("(", start);
+			string name = kernelString.Substring(start, end - start);
+
+			// Trim every line ends from empty spaces (split -> trim -> aggregate)
+			kernelString = kernelString.Split("\n").Select(x => x.TrimEnd()).Aggregate((x, y) => x + "\n" + y);
+
+			// Log name
+			if (!silent)
+			{
+				this.Log("Succesfully precompiled kernel string", "Name: " + name, 1);
+			}
+
+			return name;
+		}
+
+		public IntPtr ExecuteKernel(IntPtr pointer, int width, int height, int channels, int bitdepth, object[] arguments, bool silent = false)
 		{
 			// Check if kernel is loaded
 			if (this.Kernel == null)
 			{
-				this.Log($"Kernel not loaded", this.KernelName ?? "N/A", 1);
+				if (!silent)
+				{
+					this.Log("Kernel not loaded", this.KernelName ?? "N/A", 1);
+				}
+
 				return pointer;
 			}
 
 			// Get arguments
-			Dictionary<string, Type> args = this.GetArguments();
+			Dictionary<string, Type> args = this.GetArguments(null, silent);
 
 			// Get pointer
 			CUdeviceptr devicePtr = new(pointer);
 
 			// Allocate output buffer
-			CUdeviceptr outputPtr = new(this.MemoryH.AllocateBuffer<byte>(width * height * ((channels * bitdepth) / 8)));
+			CUdeviceptr outputPtr = new(this.MemoryH.AllocateBuffer<byte>(width * height * ((channels * bitdepth) / 8), silent));
 
 			// Merge arguments with invariables
-			object[] kernelArgs = this.MergeArguments(devicePtr, outputPtr, width, height, channels, bitdepth, arguments);
+			object[] kernelArgs = this.MergeArguments(devicePtr, outputPtr, width, height, channels, bitdepth, arguments, silent);
 
 			// Für ein 4-Kanal-Bild (RGBA): pixelIndex = (y * width + x) * 4;
 			int totalThreadsX = width;
@@ -370,7 +514,10 @@ namespace CUDABrotWithAlmonds
 			// Run with arguments
 			this.Kernel.Run(kernelArgs);
 
-			this.Log($"Kernel executed", this.KernelName ?? "N/A", 1);
+			if (!silent)
+			{
+				this.Log("Kernel executed", this.KernelName ?? "N/A", 1);
+			}
 
 			// Free input buffer if outputPointer != 0
 			if (outputPtr.Pointer != 0)
@@ -381,8 +528,8 @@ namespace CUDABrotWithAlmonds
 			// Synchronize
 			this.Context.Synchronize();
 
-			// Return output pointer
-			return outputPtr.Pointer;
+			// Return pointer
+			return outputPtr.Pointer != 0 ? outputPtr.Pointer : pointer;
 		}
 
 		public Type GetArgumentType(string typeName)
@@ -409,12 +556,15 @@ namespace CUDABrotWithAlmonds
 			return type;
 		}
 
-		public Dictionary<string, Type> GetArguments(string? kernelCode = null)
+		public Dictionary<string, Type> GetArguments(string? kernelCode = null, bool silent = false)
 		{
 			kernelCode ??= this.KernelCode;
 			if (string.IsNullOrEmpty(kernelCode) || this.Kernel == null)
 			{
-				this.Log($"Kernel not loaded", this.KernelName ?? "N/A", 1);
+				if (!silent)
+				{
+					this.Log("Kernel code is empty", this.KernelName ?? "N/A", 1);
+				}
 				return [];
 			}
 
@@ -423,21 +573,30 @@ namespace CUDABrotWithAlmonds
 			int index = kernelCode.IndexOf("__global__ void");
 			if (index == -1)
 			{
-				this.Log($"'__global__ void' not found", this.KernelName ?? "N/A", 1);
+				if (!silent)
+				{
+					this.Log($"'__global__ void' not found", this.KernelName ?? "N/A", 1);
+				}
 				return [];
 			}
 
 			index = kernelCode.IndexOf("(", index);
 			if (index == -1)
 			{
-				this.Log($"'(' not found", this.KernelName ?? "N/A", 1);
+				if (!silent)
+				{
+					this.Log($"'(' not found", this.KernelName ?? "N/A", 1);
+				}
 				return [];
 			}
 
 			int endIndex = kernelCode.IndexOf(")", index);
 			if (endIndex == -1)
 			{
-				this.Log($"')' not found", this.KernelName ?? "N/A", 1);
+				if (!silent)
+				{
+					this.Log($"')' not found", this.KernelName ?? "N/A", 1);
+				}
 				return [];
 			}
 
@@ -457,10 +616,10 @@ namespace CUDABrotWithAlmonds
 			return arguments;
 		}
 
-		public object[] MergeArguments(CUdeviceptr inputPointer, CUdeviceptr outputPointer, int width, int height, int channels, int bitdepth, object[] arguments)
+		public object[] MergeArguments(CUdeviceptr inputPointer, CUdeviceptr outputPointer, int width, int height, int channels, int bitdepth, object[] arguments, bool silent = false)
 		{
 			// Get kernel argument definitions
-			Dictionary<string, Type> args = this.GetArguments();
+			Dictionary<string, Type> args = this.GetArguments(null, silent);
 
 			// Create array for kernel arguments
 			object[] kernelArgs = new object[args.Count];
@@ -476,33 +635,57 @@ namespace CUDABrotWithAlmonds
 				{
 					kernelArgs[i] = inputPointer;
 					pointersCount++;
-					//this.Log($"Input pointer: {inputPointer}", "", 1);
+
+					if (!silent)
+					{
+						this.Log($"In-pointer: <{inputPointer}>", "", 1);
+					}
 				}
 				else if (pointersCount == 1 && type == typeof(IntPtr))
 				{
 					kernelArgs[i] = outputPointer;
 					pointersCount++;
-					//this.Log($"Output pointer: {outputPointer}", "", 1);
+
+					if (!silent)
+					{
+						this.Log($"Out-pointer: <{outputPointer}>", "", 1);
+					}
 				}
 				else if (name.Contains("width") && type == typeof(int))
 				{
 					kernelArgs[i] = width;
-					//this.Log($"Width: {width}", "", 1);
+					
+					if (!silent)
+					{
+						this.Log($"Width: [{width}]", "", 1);
+					}
 				}
 				else if (name.Contains("height") && type == typeof(int))
 				{
 					kernelArgs[i] = height;
-					//this.Log($"Height: {height}", "", 1);
+
+					if (!silent)
+					{
+						this.Log($"Height: [{height}]", "", 1);
+					}
 				}
 				else if (name.Contains("chan") && type == typeof(int))
 				{
 					kernelArgs[i] = channels;
-					//this.Log($"Channels: {channels}", "", 1);
+
+					if (!silent)
+					{
+						this.Log($"Channels: [{channels}]", "", 1);
+					}
 				}
 				else if (name.Contains("bit") && type == typeof(int))
 				{
 					kernelArgs[i] = bitdepth;
-					//this.Log($"Bitdepth: {bitdepth}", "", 1);
+
+					if (!silent)
+					{
+						this.Log($"Bits: [{bitdepth}]", "", 1);
+					}
 				}
 				else
 				{
@@ -529,6 +712,30 @@ namespace CUDABrotWithAlmonds
 
 			// Return kernel arguments
 			return kernelArgs;
+		}
+
+
+
+		public List<IntPtr> PerformMandelbrotZoom(string kernelName = "mandelbrotFullAutoPrecise01", Size? size = null, int maxIterations = 1000, bool silent = false)
+		{
+			// Verify size
+			size ??= new Size(1920, 1080);
+
+			// Get kernel
+			this.LoadKernel(kernelName, true);
+
+			// Get kernel arguments
+			Dictionary<string, Type> args = this.GetArguments(null, silent);
+
+
+
+			// Produce maxIterations IntPtr array
+			IntPtr[] iterations = new IntPtr[maxIterations];
+
+
+
+
+			return iterations.ToList();
 		}
 	}
 }
