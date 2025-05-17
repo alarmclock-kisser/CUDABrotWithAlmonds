@@ -11,6 +11,7 @@ namespace CUDABrotWithAlmonds
 		private ListBox LogList;
 		private ComboBox DevicesCombo;
 		public ComboBox KernelsCombo;
+		public ProgressBar VramBar;
 
 		public int Index = -1;
 		public CUdevice? Device = null;
@@ -20,12 +21,13 @@ namespace CUDABrotWithAlmonds
 		public CudaKernelHandling? KernelH;
 
 		// ----- ----- CONSTRUCTORS ----- ----- \\
-		public CudaContextHandling(string repopath, ListBox listBox_log, ComboBox comboBox_devices, ComboBox comboBox_kernels)
+		public CudaContextHandling(string repopath, ListBox listBox_log, ComboBox comboBox_devices, ComboBox comboBox_kernels, ProgressBar? progressBar_Vram = null)
 		{
 			this.Repopath = repopath;
 			this.LogList = listBox_log;
 			this.DevicesCombo = comboBox_devices;
 			this.KernelsCombo = comboBox_kernels;
+			this.VramBar = progressBar_Vram ?? new ProgressBar();
 
 			// Fill devices combobox
 			this.FillDevicesCombobox();
@@ -114,7 +116,7 @@ namespace CUDABrotWithAlmonds
 			this.Device = new CUdevice(index);
 			this.Context = new PrimaryContext(this.Device.Value);
 			this.Context.SetCurrent();
-			this.MemoryH = new CudaMemoryHandling(this.Repopath, this.LogList, this.Context);
+			this.MemoryH = new CudaMemoryHandling(this.Repopath, this.LogList, this.Context, this.VramBar);
 			this.KernelH = new CudaKernelHandling(this.Repopath, this.LogList, this.Context, this.MemoryH, this.KernelsCombo);
 
 			this.Log($"Device {index} initialized", this.GetName().Split(' ').FirstOrDefault() ?? "N/A");

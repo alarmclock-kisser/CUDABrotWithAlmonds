@@ -246,6 +246,146 @@ namespace CUDABrotWithAlmonds
 			return file;
 		}
 
+		public async Task<string> CreateGifAsync(string folder = "", string name = "animated_", int frameRate = 5, bool doLoop = false, Size? resize = null, ProgressBar? pBar = null)
+		{
+			// Sicherheitsprüfung
+			if (this.CachedImages.Count == 0)
+			{
+				return "";
+			}
+
+			// ProgressBar initialisieren
+			if (pBar != null)
+			{
+				pBar.Minimum = 0;
+				pBar.Maximum = 100;
+				pBar.Value = 0;
+			}
+
+			// Zielordner festlegen
+			string baseFolder = string.IsNullOrWhiteSpace(folder)
+				? Path.Combine(this.Repopath, "Resources", "ExportedGifs")
+				: folder;
+
+			Directory.CreateDirectory(baseFolder);
+
+			// Einzigartigen Dateinamen erzeugen
+			string baseName = Path.Combine(baseFolder, name + ".gif");
+			string file = baseName;
+			int counter = 1;
+			while (File.Exists(file))
+			{
+				file = Path.Combine(baseFolder, $"{name}_{counter:D3}.gif");
+				counter++;
+			}
+
+			// Delay berechnen (in 1/100 Sek)
+			int delay = 100 / Math.Max(1, frameRate);
+
+			// Parallel resizen (wenn notwendig)
+			Bitmap[] frames = await Task.Run(() =>
+			{
+				var result = new Bitmap[this.CachedImages.Count];
+				int totalImages = this.CachedImages.Count;
+				int processedCount = 0;
+				object progressLock = new object();
+
+				if (pBar != null && !resize.HasValue)
+				{
+					pBar.Invoke((MethodInvoker) (() => pBar.Value = 33));
+				}
+
+				Parallel.For(0, totalImages, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, i =>
+				{
+					Bitmap bmp;
+					if (resize.HasValue)
+					{
+						bmp = new Bitmap(resize.Value.Width, resize.Value.Height);
+						using Graphics g = Graphics.FromImage(bmp);
+						g.DrawImage(this.CachedImages[i], 0, 0, resize.Value.Width, resize.Value.Height);
+					}
+					else
+					{
+						bmp = new Bitmap(this.CachedImages[i]);
+					}
+
+					result[i] = bmp;
+
+					if (pBar != null && resize.HasValue)
+					{
+						lock (progressLock)
+						{
+							processedCount++;
+							int progress = (int) (33 * processedCount / (double) totalImages);
+							pBar.Invoke((MethodInvoker) (() => pBar.Value = progress));
+						}
+					}
+				});
+
+				return result;
+			});
+
+			// Delay PropertyItem erzeugen
+			PropertyItem delayItem = (PropertyItem) FormatterServices.GetUninitializedObject(typeof(PropertyItem));
+			delayItem.Id = 0x5100;
+			delayItem.Type = 4; // LONG
+			delayItem.Len = 4;
+			delayItem.Value = BitConverter.GetBytes(delay);
+
+			// Looping PropertyItem
+			PropertyItem loopItem = (PropertyItem) FormatterServices.GetUninitializedObject(typeof(PropertyItem));
+			loopItem.Id = 0x5101;
+			loopItem.Type = 1; // BYTE
+			loopItem.Len = 4;
+			loopItem.Value = doLoop ? [0, 0, 0, 0] : [1, 0, 0, 0];
+
+			// Encoder setup
+			ImageCodecInfo gifEncoder = ImageCodecInfo.GetImageEncoders().First(e => e.MimeType == "image/gif");
+			System.Drawing.Imaging.Encoder encoder = System.Drawing.Imaging.Encoder.SaveFlag;
+			EncoderParameters encParams = new EncoderParameters(1);
+
+			await Task.Run(() =>
+			{
+				using Bitmap first = frames[0];
+				first.SetPropertyItem(delayItem);
+				first.SetPropertyItem(loopItem);
+
+				encParams.Param[0] = new EncoderParameter(encoder, (long) EncoderValue.MultiFrame);
+				first.Save(file, gifEncoder, encParams);
+
+				encParams.Param[0] = new EncoderParameter(encoder, (long) EncoderValue.FrameDimensionTime);
+				for (int i = 1; i < frames.Length; i++)
+				{
+					using Bitmap frame = frames[i];
+					frame.SetPropertyItem(delayItem);
+					first.SaveAdd(frame, encParams);
+
+					// ProgressBar von 33% bis 100% erhöhen
+					if (pBar != null)
+					{
+						int progress = 33 + (int) (67 * i / (double) frames.Length);
+						pBar.Invoke((MethodInvoker) (() => pBar.Value = progress));
+					}
+				}
+
+				encParams.Param[0] = new EncoderParameter(encoder, (long) EncoderValue.Flush);
+				first.SaveAdd(encParams);
+			});
+
+			// Dispose of the images
+			this.CachedImages.ForEach(img => img.Dispose());
+			this.CachedImages.Clear();
+			this.CachedIntervalls.Clear();
+			this.CountLabel.Text = $"Images: -";
+
+			// ProgressBar auf 100% belassen
+			if (pBar != null)
+			{
+				pBar.Invoke((MethodInvoker) (() => pBar.Value = 100));
+			}
+
+			return file;
+		}
 
 
 		// Hilfsfunktion: Encoder holen

@@ -50,6 +50,9 @@
 			this.label_fps = new Label();
 			this.numericUpDown_size = new NumericUpDown();
 			this.label_resize = new Label();
+			this.progressBar_vram = new ProgressBar();
+			this.label_pushTime = new Label();
+			this.label_pullTime = new Label();
 			this.panel_view.SuspendLayout();
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_view).BeginInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_frameRate).BeginInit();
@@ -160,7 +163,7 @@
 			// panel_kernel
 			// 
 			this.panel_kernel.BackColor = Color.LightGray;
-			this.panel_kernel.Location = new Point(12, 150);
+			this.panel_kernel.Location = new Point(12, 119);
 			this.panel_kernel.Name = "panel_kernel";
 			this.panel_kernel.Size = new Size(235, 273);
 			this.panel_kernel.TabIndex = 10;
@@ -168,14 +171,14 @@
 			// comboBox_kernels
 			// 
 			this.comboBox_kernels.FormattingEnabled = true;
-			this.comboBox_kernels.Location = new Point(12, 121);
+			this.comboBox_kernels.Location = new Point(12, 90);
 			this.comboBox_kernels.Name = "comboBox_kernels";
 			this.comboBox_kernels.Size = new Size(235, 23);
 			this.comboBox_kernels.TabIndex = 11;
 			// 
 			// button_executeOOP
 			// 
-			this.button_executeOOP.Location = new Point(12, 429);
+			this.button_executeOOP.Location = new Point(12, 398);
 			this.button_executeOOP.Name = "button_executeOOP";
 			this.button_executeOOP.Size = new Size(75, 23);
 			this.button_executeOOP.TabIndex = 12;
@@ -196,16 +199,16 @@
 			// label_execTime
 			// 
 			this.label_execTime.AutoSize = true;
-			this.label_execTime.Location = new Point(93, 426);
+			this.label_execTime.Location = new Point(93, 395);
 			this.label_execTime.Name = "label_execTime";
-			this.label_execTime.Size = new Size(87, 15);
+			this.label_execTime.Size = new Size(71, 15);
 			this.label_execTime.TabIndex = 14;
-			this.label_execTime.Text = "Last exec. time:";
+			this.label_execTime.Text = "Exec. time: -";
 			// 
 			// label_cached
 			// 
 			this.label_cached.AutoSize = true;
-			this.label_cached.Location = new Point(93, 441);
+			this.label_cached.Location = new Point(93, 466);
 			this.label_cached.Name = "label_cached";
 			this.label_cached.Size = new Size(54, 15);
 			this.label_cached.TabIndex = 15;
@@ -259,11 +262,39 @@
 			this.label_resize.TabIndex = 20;
 			this.label_resize.Text = "Size:";
 			// 
+			// progressBar_vram
+			// 
+			this.progressBar_vram.Location = new Point(12, 41);
+			this.progressBar_vram.Name = "progressBar_vram";
+			this.progressBar_vram.Size = new Size(235, 12);
+			this.progressBar_vram.TabIndex = 21;
+			// 
+			// label_pushTime
+			// 
+			this.label_pushTime.AutoSize = true;
+			this.label_pushTime.Location = new Point(93, 410);
+			this.label_pushTime.Name = "label_pushTime";
+			this.label_pushTime.Size = new Size(71, 15);
+			this.label_pushTime.TabIndex = 22;
+			this.label_pushTime.Text = "Push time: -";
+			// 
+			// label_pullTime
+			// 
+			this.label_pullTime.AutoSize = true;
+			this.label_pullTime.Location = new Point(93, 425);
+			this.label_pullTime.Name = "label_pullTime";
+			this.label_pullTime.Size = new Size(65, 15);
+			this.label_pullTime.TabIndex = 23;
+			this.label_pullTime.Text = "Pull time: -";
+			// 
 			// WindowMain
 			// 
 			this.AutoScaleDimensions = new SizeF(7F, 15F);
 			this.AutoScaleMode = AutoScaleMode.Font;
 			this.ClientSize = new Size(1854, 891);
+			this.Controls.Add(this.label_pullTime);
+			this.Controls.Add(this.label_pushTime);
+			this.Controls.Add(this.progressBar_vram);
 			this.Controls.Add(this.label_resize);
 			this.Controls.Add(this.numericUpDown_size);
 			this.Controls.Add(this.label_fps);
@@ -321,5 +352,8 @@
 		private Label label_fps;
 		private NumericUpDown numericUpDown_size;
 		private Label label_resize;
+		private ProgressBar progressBar_vram;
+		private Label label_pushTime;
+		private Label label_pullTime;
 	}
 }

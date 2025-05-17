@@ -372,6 +372,12 @@ namespace CUDABrotWithAlmonds
 
 			this.Log($"Kernel executed", this.KernelName ?? "N/A", 1);
 
+			// Free input buffer if outputPointer != 0
+			if (outputPtr.Pointer != 0)
+			{
+				this.MemoryH.FreeBuffer(devicePtr.Pointer);
+			}
+
 			// Synchronize
 			this.Context.Synchronize();
 
@@ -459,41 +465,44 @@ namespace CUDABrotWithAlmonds
 			// Create array for kernel arguments
 			object[] kernelArgs = new object[args.Count];
 
+			int pointersCount = 0;
 			// Integrate invariables if name fits (contains)
 			for (int i = 0; i < kernelArgs.Length; i++)
 			{
 				string name = args.ElementAt(i).Key;
 				Type type = args.ElementAt(i).Value;
 
-				if (name.Contains("input") && type == typeof(IntPtr))
+				if (pointersCount == 0 && type == typeof(IntPtr))
 				{
 					kernelArgs[i] = inputPointer;
-					this.Log($"Input pointer: {inputPointer}", "", 1);
+					pointersCount++;
+					//this.Log($"Input pointer: {inputPointer}", "", 1);
 				}
-				else if (name.Contains("output") && type == typeof(IntPtr))
+				else if (pointersCount == 1 && type == typeof(IntPtr))
 				{
 					kernelArgs[i] = outputPointer;
-					this.Log($"Output pointer: {outputPointer}", "", 1);
+					pointersCount++;
+					//this.Log($"Output pointer: {outputPointer}", "", 1);
 				}
 				else if (name.Contains("width") && type == typeof(int))
 				{
 					kernelArgs[i] = width;
-					this.Log($"Width: {width}", "", 1);
+					//this.Log($"Width: {width}", "", 1);
 				}
 				else if (name.Contains("height") && type == typeof(int))
 				{
 					kernelArgs[i] = height;
-					this.Log($"Height: {height}", "", 1);
+					//this.Log($"Height: {height}", "", 1);
 				}
-				else if (name.Contains("channel") && type == typeof(int))
+				else if (name.Contains("chan") && type == typeof(int))
 				{
 					kernelArgs[i] = channels;
-					this.Log($"Channels: {channels}", "", 1);
+					//this.Log($"Channels: {channels}", "", 1);
 				}
 				else if (name.Contains("bit") && type == typeof(int))
 				{
 					kernelArgs[i] = bitdepth;
-					this.Log($"Bitdepth: {bitdepth}", "", 1);
+					//this.Log($"Bitdepth: {bitdepth}", "", 1);
 				}
 				else
 				{
@@ -516,7 +525,7 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// DEBUG LOG
-			this.Log("Kernel arguments: " + string.Join(", ", kernelArgs.Select(x => x.ToString())), "", 1);
+			//this.Log("Kernel arguments: " + string.Join(", ", kernelArgs.Select(x => x.ToString())), "", 1);
 
 			// Return kernel arguments
 			return kernelArgs;

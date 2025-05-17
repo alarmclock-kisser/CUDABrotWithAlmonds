@@ -15,7 +15,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Resources\Kernels\CU\" />
     <Folder Include="Resources\Kernels\PTX\" />
     <Folder Include="Resources\Kernels\Logs\" />
   </ItemGroup>

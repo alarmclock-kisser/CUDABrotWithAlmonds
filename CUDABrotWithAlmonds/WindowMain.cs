@@ -48,7 +48,7 @@ namespace CUDABrotWithAlmonds
 			// Init. classes
 			this.Recorder = new ImageRecorder(this.Repopath, this.label_cached);
 			this.ImageH = new ImageHandling(this.Repopath, this.listBox_images, this.pictureBox_view, null, this.label_meta);
-			this.ContextH = new CudaContextHandling(this.Repopath, this.listBox_log, this.comboBox_devices, this.comboBox_kernels);
+			this.ContextH = new CudaContextHandling(this.Repopath, this.listBox_log, this.comboBox_devices, this.comboBox_kernels, this.progressBar_vram);
 			this.GuiB = new GuiBuilder(this.Repopath, this.listBox_log, this.ContextH, this.ImageH, this.panel_kernel);
 
 			// Register events
@@ -107,8 +107,15 @@ namespace CUDABrotWithAlmonds
 				// Move to CUDA: Get bytes
 				byte[] bytes = image.GetPixelsAsBytes();
 
+				// STOPWATCH
+				Stopwatch sw = Stopwatch.StartNew();
+
 				// Create buffer
 				IntPtr pointer = this.ContextH.MemoryH?.PushData(bytes) ?? 0;
+
+				// STOPWATCH
+				sw.Stop();
+				this.label_pushTime.Text = $"Push time: {sw.ElapsedMilliseconds} ms";
 
 				// Check pointer
 				if (pointer == 0)
@@ -123,6 +130,9 @@ namespace CUDABrotWithAlmonds
 			}
 			else if (image.OnDevice)
 			{
+				// STOPWATCH
+				Stopwatch sw = Stopwatch.StartNew();
+
 				// Move to Host
 				byte[] bytes = this.ContextH.MemoryH?.PullData<byte>(image.Pointer, true) ?? [];
 				if (bytes.Length == 0)
@@ -130,6 +140,10 @@ namespace CUDABrotWithAlmonds
 					MessageBox.Show("Failed to pull data from CUDA", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
 					return;
 				}
+
+				// STOPWATCH
+				sw.Stop();
+				this.label_pullTime.Text = $"Pull time: {sw.ElapsedMilliseconds} ms";
 
 				// Create image
 				image.SetImageFromBytes(bytes, true);
@@ -175,7 +189,7 @@ namespace CUDABrotWithAlmonds
 				index = this.ImageH.Images.IndexOf(this.ImageH.CurrentObject);
 			}
 
-			if (index < 0 && index >= this.ImageH.Images.Count)
+			if (index < 0 || index >= this.ImageH.Images.Count)
 			{
 				MessageBox.Show("Invalid index", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
 				return;
@@ -189,9 +203,6 @@ namespace CUDABrotWithAlmonds
 				return;
 			}
 
-			// STOPWATCH
-			Stopwatch sw = Stopwatch.StartNew();
-
 			// Verify image on device
 			bool moved = false;
 			if (image.OnHost)
@@ -204,6 +215,9 @@ namespace CUDABrotWithAlmonds
 					return;
 				}
 			}
+
+			// STOPWATCH
+			Stopwatch sw = Stopwatch.StartNew();
 
 			// Load kernel
 			this.ContextH.KernelH?.LoadKernel(kernelName);
@@ -236,15 +250,15 @@ namespace CUDABrotWithAlmonds
 			// Call exec kernel -> pointer
 			image.Pointer = this.ContextH.KernelH?.ExecuteKernel(pointer, width, height, channels, bitdepth, args) ?? image.Pointer;
 
+			// STOPWATCH
+			sw.Stop();
+			this.label_execTime.Text = $"Execution time: {sw.ElapsedMilliseconds} ms";
+
 			// Optional: Move back to host
 			if (moved)
 			{
 				this.MoveImage(index);
 			}
-
-			// STOPWATCH
-			sw.Stop();
-			this.label_execTime.Text = $"Execution time: {sw.ElapsedMilliseconds} ms";
 
 			// If kernel is Mandelbrot, cache image with interval
 			if (this.MandelbrotMode && image.Img != null)
@@ -603,7 +617,7 @@ namespace CUDABrotWithAlmonds
 
 			// RESIZE
 			Size? resize = null;
-			if ((int) this.numericUpDown_size.Value < Math.Min(this.ImageH.CurrentObject?.Width ?? 0, this.ImageH.CurrentObject?.Height ?? 0));
+			if ((int) this.numericUpDown_size.Value < Math.Min(this.ImageH.CurrentObject?.Width ?? 0, this.ImageH.CurrentObject?.Height ?? 0))
 			{
 				resize = new Size((int) this.numericUpDown_size.Value, (int) this.numericUpDown_size.Value);
 			}
@@ -615,7 +629,7 @@ namespace CUDABrotWithAlmonds
 				Stopwatch sw = Stopwatch.StartNew();
 
 				this.GuiB.Log("Creating GIF (async) ...", "", 1);
-				result = await this.Recorder.CreateGifAsync(folder, this.ImageH.CurrentObject?.Name ?? "animatedGif_", frameRate, true, resize);
+				result = await this.Recorder.CreateGifAsync(folder, this.ImageH.CurrentObject?.Name ?? "animatedGif_", frameRate, true, resize, this.progressBar_load);
 
 				sw.Stop();
 				this.GuiB.Log("GIF created (async) ", $"{(sw.ElapsedMilliseconds / count)} ms/F", 1);
@@ -635,6 +649,9 @@ namespace CUDABrotWithAlmonds
 			{
 				MessageBox.Show($"GIF created: {result}\n\nSize: {(resize != null ? resize.Value : new Size(this.ImageH.CurrentObject?.Width ?? 0, this.ImageH.CurrentObject?.Height ?? 0))}\nFPS: {frameRate}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
 			}
+
+			// Reset pbar
+			this.progressBar_load.Value = 0;
 
 			// Reload image from file
 			this.ImageH.CurrentObject?.ResetImage();

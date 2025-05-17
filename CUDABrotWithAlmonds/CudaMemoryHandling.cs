@@ -11,18 +11,18 @@ namespace CUDABrotWithAlmonds
 		private string Repopath;
 		private ListBox LogList;
 		private PrimaryContext Context;
+		private ProgressBar VramBar;
 
 		public List<CudaBuffer> Buffers = [];
 
 
 		// ----- ----- CONSTRUCTORS ----- ----- \\
-		public CudaMemoryHandling(string repopath, ListBox logList, PrimaryContext context)
+		public CudaMemoryHandling(string repopath, ListBox logList, PrimaryContext context, ProgressBar? vramBar = null)
 		{
 			this.Repopath = repopath;
 			this.LogList = logList;
 			this.Context = context;
-
-
+			this.VramBar = vramBar ?? new ProgressBar();
 		}
 
 
@@ -59,6 +59,9 @@ namespace CUDABrotWithAlmonds
 				return null;
 			}
 
+			// Update progress bar
+			this.UpdateProgressBar();
+
 			return obj;
 		}
 
@@ -79,6 +82,12 @@ namespace CUDABrotWithAlmonds
 
 			// Free buffer
 			this.Context.FreeMemory(ptr);
+
+			// Remove from dict
+			this.Buffers.Remove(obj);
+
+			// Update progress bar
+			this.UpdateProgressBar();
 
 			return size;
 		}
@@ -153,7 +162,10 @@ namespace CUDABrotWithAlmonds
 
 			// Add to dict
 			this.Buffers.Add(obj);
-			
+
+			// Update progress bar
+			this.UpdateProgressBar();
+
 			// Return pointer
 			return pointer;
 		}
@@ -185,6 +197,9 @@ namespace CUDABrotWithAlmonds
 				this.FreeBuffer(pointer);
 			}
 
+			// Update progress bar
+			this.UpdateProgressBar();
+
 			// Return data
 			return data;
 		}
@@ -210,7 +225,60 @@ namespace CUDABrotWithAlmonds
 
 			// Add to dict
 			this.Buffers.Add(obj);
+
+			// Update PBar
+			this.UpdateProgressBar();
+
 			return pointer;
+		}
+
+		public long GetTotalMemoryUsage(bool actual = false, bool asMegabytes = false)
+		{
+			// Sum up all buffer sizes * sizeof(type)
+			long totalSize = this.Buffers.Sum(x => (long) x.Length * Marshal.SizeOf(x.Type));
+
+			// Get total memory
+			long totalAvailable = this.GetTotalMemoryAvailable() - this.Context.GetFreeDeviceMemorySize();
+			if (actual)
+			{
+				totalSize = totalAvailable;
+			}
+
+			// Convert to megabytes
+			if (asMegabytes)
+			{
+				totalSize /= 1024 * 1024;
+			}
+
+			return totalSize;
+		}
+
+		public long GetTotalMemoryAvailable(bool asMegabytes = false)
+		{
+			// Get total memory
+			long totalSize = this.Context.GetTotalDeviceMemorySize();
+			
+			// Convert to megabytes
+			if (asMegabytes)
+			{
+				totalSize /= 1024 * 1024;
+			}
+
+			return totalSize;
+		}
+
+		public void UpdateProgressBar()
+		{
+			// Get total memory usage
+			long totalSize = this.GetTotalMemoryUsage(true, true);
+
+			// Get total memory available
+			long totalAvailable = this.GetTotalMemoryAvailable(true);
+
+			// Update progress bar
+			this.VramBar.Maximum = (int) totalAvailable;
+			this.VramBar.Value = (int) totalSize;
+			this.VramBar.Text = $"{totalSize} MB / {totalAvailable} MB";
 		}
 	}
 
