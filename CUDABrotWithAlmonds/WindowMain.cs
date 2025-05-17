@@ -75,7 +75,7 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Set latest kernel
-			// this.ContextH.KernelH?.SelectLatestKernel();
+			this.ContextH.KernelH?.SelectLatestKernel();
 		}
 
 
