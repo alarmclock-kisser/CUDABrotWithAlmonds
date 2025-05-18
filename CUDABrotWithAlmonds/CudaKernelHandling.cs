@@ -489,10 +489,17 @@ namespace CUDABrotWithAlmonds
 			// Get pointer
 			CUdeviceptr devicePtr = new(pointer);
 
-			// Allocate output buffer
-			CUdeviceptr outputPtr = new(this.MemoryH.AllocateBuffer<byte>(width * height * ((channels * bitdepth) / 8), silent));
+			IntPtr outputPointer = 0;
+
+			// Allocate output buffer if args has 2 IntPtr (input & output)
+			if (args.Count(x => x.Value == typeof(IntPtr)) == 2)
+			{
+				CUdeviceptr oPtr = new(this.MemoryH.AllocateBuffer<byte>(width * height * ((channels * bitdepth) / 8), silent));
+				outputPointer = oPtr.Pointer;
+			}
 
 			// Merge arguments with invariables
+			CUdeviceptr outputPtr = new(outputPointer);
 			object[] kernelArgs = this.MergeArguments(devicePtr, outputPtr, width, height, channels, bitdepth, arguments, silent);
 
 			// Für ein 4-Kanal-Bild (RGBA): pixelIndex = (y * width + x) * 4;
@@ -520,7 +527,7 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Free input buffer if outputPointer != 0
-			if (outputPtr.Pointer != 0)
+			if (outputPointer != 0)
 			{
 				this.MemoryH.FreeBuffer(devicePtr.Pointer);
 			}
@@ -529,7 +536,7 @@ namespace CUDABrotWithAlmonds
 			this.Context.Synchronize();
 
 			// Return pointer
-			return outputPtr.Pointer != 0 ? outputPtr.Pointer : pointer;
+			return outputPointer != 0 ? outputPointer : pointer;
 		}
 
 		public Type GetArgumentType(string typeName)
@@ -669,7 +676,7 @@ namespace CUDABrotWithAlmonds
 						this.Log($"Height: [{height}]", "", 1);
 					}
 				}
-				else if (name.Contains("chan") && type == typeof(int))
+				else if (name.Contains("channel") && type == typeof(int))
 				{
 					kernelArgs[i] = channels;
 
@@ -678,7 +685,7 @@ namespace CUDABrotWithAlmonds
 						this.Log($"Channels: [{channels}]", "", 1);
 					}
 				}
-				else if (name.Contains("bit") && type == typeof(int))
+				else if (name.Contains("bits") && type == typeof(int))
 				{
 					kernelArgs[i] = bitdepth;
 

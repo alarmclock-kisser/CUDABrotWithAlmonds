@@ -15,8 +15,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Resources\Kernels\PTX\" />
     <Folder Include="Resources\Kernels\Logs\" />
+    <Folder Include="Resources\Kernels\PTX\" />
   </ItemGroup>
 
 </Project>

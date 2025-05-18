@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -55,20 +57,30 @@ namespace CUDABrotWithAlmonds
             this.ImagesList.Click += (s, e) => this.RemoveImage();
             this.ImagesList.SelectedIndexChanged += (s, e) =>
             {
-                this.ViewPBox.Image = this.CurrentImage;
-                if (this.ShowCrosshair && this.CurrentImage != null)
-				{
-					// Render crosshair
-					Bitmap bitmap = new(this.CurrentImage);
-					using (Graphics g = Graphics.FromImage(bitmap))
+                try
+                {
+					this.ViewPBox.Image = this.CurrentImage;
+					if (this.ShowCrosshair && this.CurrentImage != null)
 					{
-						Pen pen = new(Color.Red, 2);
-						g.DrawLine(pen, this.CurrentImage.Width / 2, 0, this.CurrentImage.Width / 2, this.CurrentImage.Height);
-						g.DrawLine(pen, 0, this.CurrentImage.Height / 2, this.CurrentImage.Width, this.CurrentImage.Height / 2);
+						// Render crosshair
+						Bitmap bitmap = new(this.CurrentImage);
+						using (Graphics g = Graphics.FromImage(bitmap))
+						{
+							Pen pen = new(Color.Red, 2);
+							g.DrawLine(pen, this.CurrentImage.Width / 2, 0, this.CurrentImage.Width / 2, this.CurrentImage.Height);
+							g.DrawLine(pen, 0, this.CurrentImage.Height / 2, this.CurrentImage.Width, this.CurrentImage.Height / 2);
+						}
+						this.ViewPBox.Image = bitmap;
+						this.ViewPBox.Invalidate();
 					}
-                    this.ViewPBox.Image = bitmap;
-					this.ViewPBox.Invalidate();
 				}
+                catch (Exception ex)
+                {
+                    Console.WriteLine(" ~~~ ERROR: " + ex.Message + " (" + ex.InnerException?.Message + ") ~~~ ");
+                    this.ViewPBox.Image = null;
+                }
+                
+                
 				this.MetaLabel.Text = (this.CurrentObject?.GetMetaString() ?? "No image selected") + $"    ({this.Images.Count})";
             };
             this.PropertyChanged += (s, e) =>
@@ -620,6 +632,106 @@ namespace CUDABrotWithAlmonds
 		}
 
 
+		public async Task<int> ImportGifAsyncParallel(ProgressBar? pbar = null)
+		{
+			using OpenFileDialog ofd = new()
+			{
+				InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+				Filter = @"GIF Files|*.gif",
+				Multiselect = false,
+				RestoreDirectory = true
+			};
+
+			if (ofd.ShowDialog() != DialogResult.OK)
+				return 0;
+
+			string filepath = ofd.FileName;
+			int frameCount = 0;
+			int processedFrames = 0;
+
+			try
+			{
+				// First pass: get frame count
+				using (Bitmap gif = new Bitmap(filepath))
+				{
+					FrameDimension dimension = FrameDimension.Time;
+					frameCount = gif.GetFrameCount(dimension);
+
+					// Initialize progress bar
+					if (pbar != null)
+					{
+						pbar.Maximum = frameCount;
+						pbar.Value = 0;
+						pbar.Style = ProgressBarStyle.Continuous;
+					}
+				}
+
+				// Pre-allocate array for ordered results
+				ImageObject[] orderedResults = new ImageObject[frameCount];
+
+				await Task.Run(() =>
+				{
+					Parallel.For(0, frameCount, new ParallelOptions
+					{
+						MaxDegreeOfParallelism = Environment.ProcessorCount
+					}, i =>
+					{
+						try
+						{
+							using (Bitmap gif = new Bitmap(filepath))
+							{
+								FrameDimension dimension = FrameDimension.Time;
+								lock (gif)
+								{
+									gif.SelectActiveFrame(dimension, i);
+									Bitmap frameCopy = new Bitmap(gif.Width, gif.Height);
+									using (Graphics g = Graphics.FromImage(frameCopy))
+										g.DrawImageUnscaled(gif, 0, 0);
+
+									orderedResults[i] = new ImageObject(
+										frameCopy,
+										$"{Path.GetFileNameWithoutExtension(filepath)}_f{i:D3}"
+									);
+								}
+							}
+
+							// Update progress (thread-safe)
+							int current = Interlocked.Increment(ref processedFrames);
+							if (pbar != null && pbar.IsHandleCreated)
+							{
+								pbar.BeginInvoke((MethodInvoker)(() =>
+								{
+									pbar.Value = Math.Min(current, pbar.Maximum);
+								}));
+							}
+						}
+						catch (Exception ex)
+						{
+							Debug.WriteLine($"Error processing frame {i}: {ex.Message}");
+						}
+					});
+				});
+
+				// Add all frames in order after processing
+				this.Images.AddRange(orderedResults.Where(img => img != null));
+				this.FillImagesListBox();
+
+				return frameCount;
+			}
+			catch (Exception ex)
+			{
+				Debug.WriteLine($"GIF import failed: {ex.Message}");
+				return 0;
+			}
+			finally
+			{
+				// Reset progress bar
+				if (pbar != null && pbar.IsHandleCreated)
+				{
+					pbar.BeginInvoke((MethodInvoker)(() => pbar.Value = 0));
+				}
+			}
+		}
 	}
 
 	public class ImageObject
@@ -816,14 +928,17 @@ namespace CUDABrotWithAlmonds
 				return [];
 			}
 
-			Bitmap bmp = new(this.Img);
-            Rectangle rect = new(0, 0, bmp.Width, bmp.Height);
-            BitmapData bmpData = bmp.LockBits(rect, ImageLockMode.ReadOnly, bmp.PixelFormat);
-
-            try
+			
+            Bitmap bmp = new(1, 1, PixelFormat.Format32bppArgb);
+            BitmapData bmpData = new BitmapData();
+			try
             {
-                // Berechne die tatsächliche Byte-Länge OHNE Stride-Padding
-                int bytesPerPixel = Image.GetPixelFormatSize(bmp.PixelFormat) / 8;
+				bmp = new(this.Img);
+				Rectangle rect = new(0, 0, bmp.Width, bmp.Height);
+				bmpData = bmp.LockBits(rect, ImageLockMode.ReadOnly, bmp.PixelFormat);
+
+				// Berechne die tatsächliche Byte-Länge OHNE Stride-Padding
+				int bytesPerPixel = Image.GetPixelFormatSize(bmp.PixelFormat) / 8;
                 int unpaddedRowSize = bmp.Width * bytesPerPixel;
                 int totalBytes = unpaddedRowSize * bmp.Height;
 
@@ -911,17 +1026,23 @@ namespace CUDABrotWithAlmonds
 			this.Modifications.Clear();
 		}
 
-        public string? Export(bool showMsgbox = false)
+        public string? Export(string name = "", bool showMsgbox = false)
         {
-            // Create SaveFileDialog
-            using SaveFileDialog sfd = new();
+            if (string.IsNullOrEmpty(name))
+            {
+                name = this.Name;
+			}
+
+			// Create SaveFileDialog
+			using SaveFileDialog sfd = new();
 
 			// Set SFD params
 			sfd.Title = "Save Image";
 			sfd.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
             sfd.Filter = @"Image Files|*.bmp;*.png;*.jpg;*.jpeg*.tif;*.tiff;";
-            sfd.FileName = this.Name + "_" + string.Join("_", this.Modifications) + ".png";
-
+            sfd.FileName = name + ".png";
+            sfd.RestoreDirectory = true;
+            
 			// Show dialog and get result
 			DialogResult result = sfd.ShowDialog();
             if (result == DialogResult.OK)

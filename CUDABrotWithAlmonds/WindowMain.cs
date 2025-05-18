@@ -422,8 +422,17 @@ namespace CUDABrotWithAlmonds
 								  !x.Key.ToLower().Contains("output") &&
 								  !x.Key.ToLower().Contains("pixel") &&
 								  !x.Key.ToLower().Contains("width") &&
-								  !x.Key.ToLower().Contains("height"))
-					   .ToDictionary(x => x.Key, x => x.Value);
+								  !x.Key.ToLower().Contains("height") &&
+								  !x.Key.EndsWith("R") &&
+								  !x.Key.EndsWith("G") &&
+								  !x.Key.EndsWith("B"))
+				.ToDictionary(x => x.Key, x => x.Value);
+
+			// Optional: Add recording and frame id
+			if (this.MandelbrotMode && this.Recorder.CachedImages.Count > 0)
+			{
+				args.Add("Recording", this.Recorder.CachedImages.Count);
+			}
 
 			// Speichere args für Overlay-Zeichnung im Paint-Event
 			this.currentOverlayArgs = args;
@@ -638,27 +647,14 @@ namespace CUDABrotWithAlmonds
 				return;
 			}
 
-			// 2. Calculate zoom factor
-			if (e.Delta > 0)
+			// If at 0, set to 1
+			if (numericZ.Value <= 0.01M)
 			{
-				this.mandelbrotZoomFactor *= 1.1f;
-			}
-			else
-			{
-				this.mandelbrotZoomFactor /= 1.1f;
+				numericZ.Value = 1;
 			}
 
-			// 3. Update zoom value with boundary checks
-			decimal newValue = (decimal) this.mandelbrotZoomFactor;
-			if (newValue < numericZ.Minimum)
-			{
-				newValue = numericZ.Minimum;
-			}
-			if (newValue > numericZ.Maximum)
-			{
-				newValue = numericZ.Maximum;
-			}
-			numericZ.Value = newValue;
+
+			numericZ.Value *= e.Delta > 0 ? 1.1m : 0.9m; // Zoom in/out
 
 			// Call re-exec kernel
 			this.kernelExecutionRequired = true;
@@ -754,12 +750,14 @@ namespace CUDABrotWithAlmonds
 
 
 		// ----- ----- EVENT HANDLERS ----- ----- \\
-		private void button_import_Click(object sender, EventArgs e)
+		private async void button_import_Click(object sender, EventArgs e)
 		{
 			// If CTRL down, import GIF
 			if (ModifierKeys == Keys.Control)
 			{
-				this.ImageH.ImportGif();
+				int count = await this.ImageH.ImportGifAsyncParallel(this.progressBar_load);
+
+				this.GuiB.Log($"GIF imported", $"{count} frames", 1);
 				return;
 			}
 
@@ -775,7 +773,19 @@ namespace CUDABrotWithAlmonds
 				return;
 			}
 
-			this.ImageH.CurrentObject?.Export(true);
+			// If mandlebrot mode, set name to "mandelbrot_" + zoom value
+			string name = this.ImageH.CurrentObject?.Name ?? "cuda__";
+			if (this.MandelbrotMode && this.ImageH.CurrentObject != null)
+			{
+				// Get zoom numeric in args panel
+				NumericUpDown? numeric_zoom = this.panel_kernel.Controls.OfType<NumericUpDown>().FirstOrDefault(x => x.Name.ToLower().Contains("zoom"));
+				if (numeric_zoom != null)
+				{
+					name = $"mandelbrot_{Math.Round(numeric_zoom.Value, 0)}";
+				}
+			}
+
+			this.ImageH.CurrentObject?.Export(name, true);
 		}
 
 		private void button_createImage_Click(object sender, EventArgs e)
@@ -842,6 +852,9 @@ namespace CUDABrotWithAlmonds
 			string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "CUDA-GIFs");
 			string result;
 
+			// Get current image
+			Image? image = this.ImageH.CurrentObject?.Img;
+
 			// FRAME RATE
 			int frameRate = (int) this.numericUpDown_frameRate.Value;
 
@@ -883,8 +896,15 @@ namespace CUDABrotWithAlmonds
 			// Reset pbar
 			this.progressBar_load.Value = 0;
 
-			// Reload image from file
-			this.ImageH.CurrentObject?.ResetImage();
+			// Set image
+			if (this.ImageH.CurrentObject != null)
+			{
+
+				this.ImageH.CurrentObject.Img = image;
+			}
+
+			// Refill list
+			this.ImageH.FillImagesListBox();
 		}
 
 		private void checkBox_crosshair_CheckedChanged(object sender, EventArgs e)
