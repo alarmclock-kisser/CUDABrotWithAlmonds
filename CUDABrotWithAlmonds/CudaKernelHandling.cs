@@ -454,7 +454,7 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Get name between "void " and "("
-			int start = kernelString.IndexOf("void ") + "void ".Length;
+			int start = kernelString.IndexOf("__global__ void ") + "__global__ void ".Length;
 			int end = kernelString.IndexOf("(", start);
 			string name = kernelString.Substring(start, end - start);
 

@@ -13,7 +13,7 @@ extern "C" __global__ void downsample01(
     int idx = (y * width + x) * 4; // 4 channels: R, G, B, A
 
     // Calculate bitmask for target bit depth
-    int shift = 8 - bitsPerChannel;
+    int shift = 8 - bpc;
     unsigned char mask = (0xFF << shift) & 0xFF;
 
     // Reduce bit depth for RGB channels
