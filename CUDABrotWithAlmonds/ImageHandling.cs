@@ -114,7 +114,7 @@ namespace CUDABrotWithAlmonds
             this.ZoomNumeric.ValueChanged += this.ZoomNumeric_ValueChanged;
 
 			// Load resources images
-			this.LoadResourcesImages(32);
+			// this.LoadResourcesImages(32);
 		}
 
 
@@ -557,9 +557,12 @@ namespace CUDABrotWithAlmonds
 
             // Select last entry in listbox
             this.ImagesList.SelectedIndex = this.ImagesList.Items.Count - 1;
-        }
 
-        public ImageObject? Clone(int index = -1)
+			// Fit zoom
+            this.FitZoom();
+		}
+
+		public ImageObject? Clone(int index = -1)
         {
             // Get index if -1
             if (index < 0)
@@ -753,8 +756,8 @@ namespace CUDABrotWithAlmonds
         // ----- ----- LAMBDA ----- ----- \\
         public long Size => this.Width * this.Height * this.BitsPerPixel / 8;
 
-        public bool OnHost => this.Img != null && this.Pointer == 0;
-        public bool OnDevice => this.Img == null && this.Pointer != 0;
+        public bool OnHost => this.Img?.Width >= 2 && this.Pointer == 0;
+        public bool OnDevice => this.Img?.Width < 2 && this.Pointer != 0;
 
 
         // ----- ----- CONSTRUCTOR ----- ----- \\
@@ -966,13 +969,83 @@ namespace CUDABrotWithAlmonds
             }
         }
 
-        public Image? SetImageFromBytes(byte[] pixels, bool nullPointer = false)
+
+		public byte[] GetPixelsAsBytes(bool nullImage = false, string targetChannelOrder = "RGBA")
+		{
+			if (this.Img == null)
+				return [];
+
+			// Zielkanäle prüfen (z. B. "RGBA")
+			targetChannelOrder = targetChannelOrder.ToUpperInvariant();
+			if (targetChannelOrder.Length != 4 || !targetChannelOrder.All("RGBA".Contains))
+				throw new ArgumentException("Invalid channel order, must be permutation of RGBA", nameof(targetChannelOrder));
+
+			// Quelle ist immer BGRA bei Format32bppArgb
+			Dictionary<char, int> srcChannelMap = new()
+	        {
+		        { 'B', 0 },
+		        { 'G', 1 },
+		        { 'R', 2 },
+		        { 'A', 3 }
+	        };
+
+			Bitmap bmp = new(this.Img);
+			Rectangle rect = new(0, 0, bmp.Width, bmp.Height);
+			BitmapData bmpData = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+
+			int width = bmp.Width;
+			int height = bmp.Height;
+			int srcStride = bmpData.Stride;
+			int channels = 4;
+
+			byte[] result = new byte[width * height * channels];
+
+			unsafe
+			{
+				byte* src = (byte*)bmpData.Scan0;
+
+				for (int y = 0; y < height; y++)
+				{
+					for (int x = 0; x < width; x++)
+					{
+						int srcIdx = y * srcStride + x * 4;
+						int dstIdx = (y * width + x) * 4;
+
+						for (int i = 0; i < 4; i++)
+						{
+							char ch = targetChannelOrder[i];
+							int srcOffset = srcChannelMap[ch];
+							result[dstIdx + i] = src[srcIdx + srcOffset];
+						}
+					}
+				}
+			}
+
+			bmp.UnlockBits(bmpData);
+			if (nullImage)
+			{
+				this.Img.Dispose();
+				this.Img = null;
+			}
+
+			return result;
+		}
+
+
+
+		public Image? SetImageFromBytes(byte[] pixels, bool nullPointer = false)
         {
-            int width = this.Width;
+
+			int width = this.Width;
             int height = this.Height;
 
-            // Versuche, das Format zu erraten (z. B. 3 oder 4 Bytes/Pixel)
-            PixelFormat format = (pixels.Length == width * height * 3)
+            if (width < 1 || height < 1 || pixels.Length == 0)
+            {
+                return null;
+            }
+
+			// Versuche, das Format zu erraten (z. B. 3 oder 4 Bytes/Pixel)
+			PixelFormat format = (pixels.Length == width * height * 3)
                 ? PixelFormat.Format24bppRgb
                 : PixelFormat.Format32bppArgb;
 

@@ -83,6 +83,11 @@ namespace CUDABrotWithAlmonds
 
 			// Set latest kernel
 			// this.ContextH.KernelH?.SelectLatestKernel();
+
+			// Load resources images
+			// this.ImageH.LoadResourcesImages();
+			// Create empty image wih size of screen
+			this.ImageH.CreateEmpty(Color.White, new Size(Screen.PrimaryScreen?.Bounds.Width ?? 1024, Screen.PrimaryScreen?.Bounds.Height ?? 1024), "Image_01");
 		}
 
 
@@ -124,6 +129,12 @@ namespace CUDABrotWithAlmonds
 
 		public void MoveImage(int index = -1, bool refresh = true)
 		{
+			// Abort if CTRL down
+			if (ModifierKeys == Keys.Control)
+			{
+				return;
+			}
+
 			if (index == -1 && this.ImageH.CurrentObject != null)
 			{
 				index = this.ImageH.Images.IndexOf(this.ImageH.CurrentObject);
@@ -141,7 +152,7 @@ namespace CUDABrotWithAlmonds
 			if (image.OnHost)
 			{
 				// Move to CUDA: Get bytes
-				byte[] bytes = image.GetPixelsAsBytes();
+				byte[] bytes = image.GetPixelsAsBytes(false);
 
 				// STOPWATCH
 				Stopwatch sw = Stopwatch.StartNew();
@@ -162,7 +173,7 @@ namespace CUDABrotWithAlmonds
 
 				// Set pointer, void image
 				image.Pointer = pointer;
-				image.Img = null;
+				image.Img = new Bitmap(1, 1);
 			}
 			else if (image.OnDevice)
 			{
@@ -755,9 +766,11 @@ namespace CUDABrotWithAlmonds
 			// If CTRL down, import GIF
 			if (ModifierKeys == Keys.Control)
 			{
-				int count = await this.ImageH.ImportGifAsyncParallel(this.progressBar_load);
-
-				this.GuiB.Log($"GIF imported", $"{count} frames", 1);
+				this.ImageH.ImportGif();
+				
+				//int count = await this.ImageH.ImportGifAsyncParallel(this.progressBar_load);
+				//this.GuiB.Log($"GIF imported", $"{count} frames", 1);
+				
 				return;
 			}
 
@@ -805,7 +818,6 @@ namespace CUDABrotWithAlmonds
 
 
 			this.ImageH.CreateEmpty(Color.White, size, "");
-			this.ImageH.FitZoom();
 		}
 
 		private void button_center_Click(object sender, EventArgs e)
@@ -875,7 +887,7 @@ namespace CUDABrotWithAlmonds
 				result = await this.Recorder.CreateGifAsync(folder, this.ImageH.CurrentObject?.Name ?? "animatedGif_", frameRate, true, resize, this.progressBar_load);
 
 				sw.Stop();
-				this.GuiB.Log("GIF created (async) ", $"{(sw.ElapsedMilliseconds / count)} ms/F", 1);
+				this.GuiB.Log("GIF created (async) ", $"{(sw.ElapsedMilliseconds / (count + 1))} ms/F", 1);
 			}
 			else
 			{
