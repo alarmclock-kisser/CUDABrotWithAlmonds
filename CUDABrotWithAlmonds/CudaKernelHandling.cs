@@ -53,7 +53,7 @@ namespace CUDABrotWithAlmonds
 		// ----- ----- METHODS ----- ----- \\
 		public string Log(string message = "", string inner = "", int indent = 0)
 		{
-			string indentString = new string(' ', indent);
+			string indentString = new string('~', indent);
 			string logMessage = $"[Krn] {indentString}{message} ({inner})";
 			this.LogList.Items.Add(logMessage);
 			this.LogList.TopIndex = this.LogList.Items.Count - 1;
@@ -716,26 +716,181 @@ namespace CUDABrotWithAlmonds
 
 
 
-		public List<IntPtr> PerformMandelbrotZoom(string kernelName = "mandelbrotFullAutoPrecise01", Size? size = null, int maxIterations = 1000, bool silent = false)
+		public List<IntPtr> PerformAutoFractal(string kernelName = "mandelbrotFullAutoPrecise01", Size? size = null, int maxIterations = 1000, double initialZoom = 1, double incrementCoeff = 1.1, int iterCoeff = 10, Color? baseColor = null, bool silent = false)
 		{
-			// Verify size
+			// Verify size & color
 			size ??= new Size(1920, 1080);
+			baseColor ??= Color.Black;
 
 			// Get kernel
 			this.LoadKernel(kernelName, true);
-
-			// Get kernel arguments
-			Dictionary<string, Type> args = this.GetArguments(null, silent);
-
-
+			if (this.Kernel == null)
+			{
+				if (!silent)
+				{
+					this.Log("Kernel not loaded", this.KernelName ?? "N/A", 1);
+				}
+				return [];
+			}
 
 			// Produce maxIterations IntPtr array
 			IntPtr[] iterations = new IntPtr[maxIterations];
 
+			// Fill iterations with IntPtr (output)
+			for (int i = 0; i < maxIterations; i++)
+			{
+				iterations[i] = this.MemoryH.AllocateBuffer<byte>(size.Value.Width * size.Value.Height * (32 / 8));
+			}
 
+			// Get kernel arguments
+			int width = size.Value.Width;
+			int height = size.Value.Height;
+			double zoom = initialZoom;
+			int colR = baseColor.Value.R;
+			int colG = baseColor.Value.G;
+			int colB = baseColor.Value.B;
 
+			// Für ein 4-Kanal-Bild (RGBA): pixelIndex = (y * width + x) * 4;
+			int totalThreadsX = width;
+			int totalThreadsY = height;
+
+			// Blockgröße (z. B. 16×16 Threads pro Block)
+			int blockSizeX = 8;
+			int blockSizeY = 8;
+
+			// Gridgröße = Gesamtgröße / Blockgröße (aufrunden)
+			int gridSizeX = (totalThreadsX + blockSizeX - 1) / blockSizeX;
+			int gridSizeY = (totalThreadsY + blockSizeY - 1) / blockSizeY;
+
+			this.Kernel.BlockDimensions = new dim3(blockSizeX, blockSizeY, 1);
+			this.Kernel.GridDimensions = new dim3(gridSizeX, gridSizeY, 1);
+
+			// Get input pointer
+			CUdeviceptr inputPointer = new(this.MemoryH.AllocateBuffer<byte>(size.Value.Width * size.Value.Height * (32 / 8)));
+
+			// Loop over iterations
+			int currentIter = iterCoeff;
+			for (int i = 0; i < maxIterations; i++)
+			{
+				var outputPointer = new CUdeviceptr(iterations[i]);
+				var arguments = this.MergeArguments(inputPointer, outputPointer, width, height, 4, 32, [inputPointer, outputPointer, width, height, zoom, currentIter, colR, colG, colB], silent);
+
+				// Run kernel
+				this.Kernel.Run(arguments);
+
+				// Synchronize
+				this.Context.Synchronize();
+
+				// Increase zoom & iter
+				zoom *= incrementCoeff;
+				currentIter += iterCoeff;
+			}
+
+			// Free input buffer
+			this.MemoryH.FreeBuffer(inputPointer.Pointer);
+
+			// Return iterations (output pointers)
+			return iterations.ToList();
+		}
+
+		public async Task<List<IntPtr>> PerformAutoFractalAsync(string kernelName = "mandelbrotFullAutoPrecise01", Size? size = null, int maxIterations = 1000, double initialZoom = 1, double incrementCoeff = 1.1,int iterCoeff = 10, Color? baseColor = null, ProgressBar? pBar = null, bool silent = false)
+		{
+			size ??= new Size(1920, 1080);
+			baseColor ??= Color.Black;
+
+			this.LoadKernel(kernelName, true);
+			if (this.Kernel == null)
+			{
+				if (!silent)
+				{
+					this.Log("Kernel not loaded", this.KernelName ?? "N/A", 1);
+				}
+				return [];
+			}
+
+			IntPtr[] iterations = new IntPtr[maxIterations];
+			for (int i = 0; i < maxIterations; i++)
+			{
+				iterations[i] = this.MemoryH.AllocateBuffer<byte>(size.Value.Width * size.Value.Height * 4);
+			}
+
+			int width = size.Value.Width;
+			int height = size.Value.Height;
+			double zoom = initialZoom;
+			int colR = baseColor.Value.R;
+			int colG = baseColor.Value.G;
+			int colB = baseColor.Value.B;
+
+			int totalThreadsX = width;
+			int totalThreadsY = height;
+			int blockSizeX = 8;
+			int blockSizeY = 8;
+			int gridSizeX = (totalThreadsX + blockSizeX - 1) / blockSizeX;
+			int gridSizeY = (totalThreadsY + blockSizeY - 1) / blockSizeY;
+
+			this.Kernel.BlockDimensions = new dim3(blockSizeX, blockSizeY, 1);
+			this.Kernel.GridDimensions = new dim3(gridSizeX, gridSizeY, 1);
+
+			CUdeviceptr inputPointer = new(this.MemoryH.AllocateBuffer<byte>(width * height * 4));
+			int currentIter = iterCoeff;
+
+			double averageMs = 0;
+			var sw = new System.Diagnostics.Stopwatch();
+
+			if (pBar != null)
+			{
+				pBar.Value = 0;
+				pBar.Maximum = 1;
+			}
+
+			for (int i = 0; i < maxIterations; i++)
+			{
+				await Task.Yield(); // async Übergangspunkt
+
+				sw.Restart();
+
+				var outputPointer = new CUdeviceptr(iterations[i]);
+				var arguments = this.MergeArguments(
+					inputPointer,
+					outputPointer,
+					width,
+					height,
+					4, 32,
+					[inputPointer, outputPointer, width, height, zoom, currentIter, colR, colG, colB],
+					silent
+				);
+
+				this.Kernel.Run(arguments);
+				this.Context.Synchronize();
+
+				sw.Stop();
+				double currentMs = sw.Elapsed.TotalMilliseconds;
+
+				// Update average (gleitender Durchschnitt)
+				averageMs = ((averageMs * i) + currentMs) / (i + 1);
+
+				// Update Zoom & Iteration
+				zoom *= incrementCoeff;
+				currentIter += iterCoeff;
+
+				// ProgressBar aktualisieren
+				if (pBar != null)
+				{
+					int estTotalMs = (int) (averageMs * maxIterations * 1.5);
+					int newMax = Math.Max(pBar.Maximum, estTotalMs);
+					if (pBar.Maximum != newMax)
+						pBar.Invoke(() => pBar.Maximum = newMax);
+
+					int progressValue = (int) (averageMs * (i + 1));
+					pBar.Invoke(() => pBar.Value = Math.Min(progressValue, pBar.Maximum));
+				}
+			}
+
+			this.MemoryH.FreeBuffer(inputPointer.Pointer);
 
 			return iterations.ToList();
 		}
+
+
 	}
 }

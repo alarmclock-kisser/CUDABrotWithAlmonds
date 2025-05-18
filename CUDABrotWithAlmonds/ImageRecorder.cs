@@ -388,12 +388,8 @@ namespace CUDABrotWithAlmonds
 		}
 
 
-		// Hilfsfunktion: Encoder holen
-		private ImageCodecInfo GetEncoder(ImageFormat format)
-		{
-			return ImageCodecInfo.GetImageDecoders().FirstOrDefault(c => c.FormatID == format.Guid)
-				   ?? throw new Exception("GIF encoder not found.");
-		}
+
+
 
 
 

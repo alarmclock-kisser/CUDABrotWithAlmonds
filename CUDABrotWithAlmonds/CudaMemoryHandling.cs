@@ -32,7 +32,7 @@ namespace CUDABrotWithAlmonds
 		// ----- ----- METHODS ----- ----- \\
 		public string Log(string message = "", string inner = "", int indent = 0)
 		{
-			string indentString = new string(' ', indent);
+			string indentString = new string('~', indent);
 			string logMessage = $"[Mem] {indentString}{message} ({inner})";
 			this.LogList.Items.Add(logMessage);
 			this.LogList.TopIndex = this.LogList.Items.Count - 1;

@@ -29,9 +29,6 @@ namespace CUDABrotWithAlmonds
 			this.KernelsCombo = comboBox_kernels;
 			this.VramBar = progressBar_Vram ?? new ProgressBar();
 
-			// Fill devices combobox
-			this.FillDevicesCombobox();
-
 			// Register events
 			this.DevicesCombo.SelectedIndexChanged += (s, e) => this.InitDevice(this.DevicesCombo.SelectedIndex);
 
@@ -43,7 +40,7 @@ namespace CUDABrotWithAlmonds
 		// ----- ----- METHODS ----- ----- \\
 		public string Log(string message = "", string inner = "", int indent = 0)
 		{
-			string indentString = new string(' ', indent);
+			string indentString = new string('~', indent);
 			string logMessage = $"[Ctx] {indentString}{message} ({inner})";
 			this.LogList.Items.Add(logMessage);
 			this.LogList.TopIndex = this.LogList.Items.Count - 1;
@@ -151,8 +148,6 @@ namespace CUDABrotWithAlmonds
 				Version capability = this.GetCapability(i);
 				comboBox.Items.Add($"{deviceName} ({capability.Major}.{capability.Minor})");
 			}
-
-			comboBox.SelectedIndex = this.Index;
 		}
 
 		public void InitDevice(int index = -1)

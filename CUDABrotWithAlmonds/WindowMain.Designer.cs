@@ -58,10 +58,12 @@
 			this.groupBox_gif = new GroupBox();
 			this.checkBox_record = new CheckBox();
 			this.groupBox_kernel = new GroupBox();
-			this.checkBox_silent = new CheckBox();
+			this.button_autoFractal = new Button();
 			this.checkBox_optionalArgsOnly = new CheckBox();
 			this.button_addKernel = new Button();
+			this.checkBox_silent = new CheckBox();
 			this.checkBox_crosshair = new CheckBox();
+			this.button_fullScreen = new Button();
 			this.panel_view.SuspendLayout();
 			((System.ComponentModel.ISupportInitialize) this.pictureBox_view).BeginInit();
 			((System.ComponentModel.ISupportInitialize) this.numericUpDown_frameRate).BeginInit();
@@ -354,7 +356,7 @@
 			// 
 			// groupBox_kernel
 			// 
-			this.groupBox_kernel.Controls.Add(this.checkBox_silent);
+			this.groupBox_kernel.Controls.Add(this.button_autoFractal);
 			this.groupBox_kernel.Controls.Add(this.checkBox_optionalArgsOnly);
 			this.groupBox_kernel.Controls.Add(this.button_addKernel);
 			this.groupBox_kernel.Controls.Add(this.button_executeOOP);
@@ -368,15 +370,15 @@
 			this.groupBox_kernel.TabStop = false;
 			this.groupBox_kernel.Text = "Kernel";
 			// 
-			// checkBox_silent
+			// button_autoFractal
 			// 
-			this.checkBox_silent.AutoSize = true;
-			this.checkBox_silent.Location = new Point(140, 77);
-			this.checkBox_silent.Name = "checkBox_silent";
-			this.checkBox_silent.Size = new Size(60, 19);
-			this.checkBox_silent.TabIndex = 26;
-			this.checkBox_silent.Text = "Silent?";
-			this.checkBox_silent.UseVisualStyleBackColor = true;
+			this.button_autoFractal.Location = new Point(174, 73);
+			this.button_autoFractal.Name = "button_autoFractal";
+			this.button_autoFractal.Size = new Size(55, 23);
+			this.button_autoFractal.TabIndex = 26;
+			this.button_autoFractal.Text = "Auto...";
+			this.button_autoFractal.UseVisualStyleBackColor = true;
+			this.button_autoFractal.Click += this.button_autoFractal_Click;
 			// 
 			// checkBox_optionalArgsOnly
 			// 
@@ -385,9 +387,9 @@
 			this.checkBox_optionalArgsOnly.CheckState = CheckState.Checked;
 			this.checkBox_optionalArgsOnly.Location = new Point(6, 77);
 			this.checkBox_optionalArgsOnly.Name = "checkBox_optionalArgsOnly";
-			this.checkBox_optionalArgsOnly.Size = new Size(128, 19);
+			this.checkBox_optionalArgsOnly.Size = new Size(105, 19);
 			this.checkBox_optionalArgsOnly.TabIndex = 25;
-			this.checkBox_optionalArgsOnly.Text = "Optional args only?";
+			this.checkBox_optionalArgsOnly.Text = "Only variables?";
 			this.checkBox_optionalArgsOnly.UseVisualStyleBackColor = true;
 			this.checkBox_optionalArgsOnly.CheckedChanged += this.checkBox_optionalArgsOnly_CheckedChanged;
 			// 
@@ -401,6 +403,16 @@
 			this.button_addKernel.UseVisualStyleBackColor = true;
 			this.button_addKernel.Click += this.button_addKernel_Click;
 			// 
+			// checkBox_silent
+			// 
+			this.checkBox_silent.AutoSize = true;
+			this.checkBox_silent.Location = new Point(98, 59);
+			this.checkBox_silent.Name = "checkBox_silent";
+			this.checkBox_silent.Size = new Size(60, 19);
+			this.checkBox_silent.TabIndex = 26;
+			this.checkBox_silent.Text = "Silent?";
+			this.checkBox_silent.UseVisualStyleBackColor = true;
+			// 
 			// checkBox_crosshair
 			// 
 			this.checkBox_crosshair.AutoSize = true;
@@ -412,11 +424,23 @@
 			this.checkBox_crosshair.UseVisualStyleBackColor = true;
 			this.checkBox_crosshair.CheckedChanged += this.checkBox_crosshair_CheckedChanged;
 			// 
+			// button_fullScreen
+			// 
+			this.button_fullScreen.Location = new Point(172, 59);
+			this.button_fullScreen.Name = "button_fullScreen";
+			this.button_fullScreen.Size = new Size(75, 23);
+			this.button_fullScreen.TabIndex = 28;
+			this.button_fullScreen.Text = "Fullscreen";
+			this.button_fullScreen.UseVisualStyleBackColor = true;
+			this.button_fullScreen.Click += this.button_fullScreen_Click;
+			// 
 			// WindowMain
 			// 
 			this.AutoScaleDimensions = new SizeF(7F, 15F);
 			this.AutoScaleMode = AutoScaleMode.Font;
 			this.ClientSize = new Size(1854, 891);
+			this.Controls.Add(this.button_fullScreen);
+			this.Controls.Add(this.checkBox_silent);
 			this.Controls.Add(this.checkBox_crosshair);
 			this.Controls.Add(this.groupBox_kernel);
 			this.Controls.Add(this.groupBox_gif);
@@ -484,5 +508,7 @@
 		private Button button_addKernel;
 		private CheckBox checkBox_optionalArgsOnly;
 		private CheckBox checkBox_silent;
+		private Button button_autoFractal;
+		private Button button_fullScreen;
 	}
 }

@@ -41,7 +41,7 @@ namespace CUDABrotWithAlmonds
 		// ----- ----- METHODS ----- ----- \\
 		public string Log(string message = "", string inner = "", int indent = 0)
 		{
-			string indentString = new string(' ', indent);
+			string indentString = new string('~', indent);
 			string logMessage = $"[Gui] {indentString}{message} ({inner})";
 			this.LogList.Items.Add(logMessage);
 			this.LogList.TopIndex = this.LogList.Items.Count - 1;
@@ -82,17 +82,6 @@ namespace CUDABrotWithAlmonds
 					continue;
 				}
 
-				// Create label
-				Label label = new()
-				{
-					Name = $"label_arg_{argName}",
-					Text = argName,
-					Location = new Point(10, y),
-					Size = new Size(maxWidth - 25 - inputWidth, 23)
-				};
-				this.ArgumentsPanel.Controls.Add(label);
-				this.LabelList.Add(label);
-
 				// Create numeric input
 				NumericUpDown numeric = new()
 				{
@@ -123,7 +112,8 @@ namespace CUDABrotWithAlmonds
 				{
 					numeric.BackColor = Color.LightGoldenrodYellow;
 					numeric.ReadOnly = true;
-					numeric.Click += (s, e) => {
+					numeric.Click += (s, e) =>
+					{
 						if (Control.ModifierKeys == Keys.Control)
 						{
 							numeric.ReadOnly = !numeric.ReadOnly;
@@ -136,8 +126,27 @@ namespace CUDABrotWithAlmonds
 					}
 				}
 
+				// Create label
+				Label label = new()
+				{
+					Name = $"label_arg_{argName}",
+					Text = argName,
+					Location = new Point(10, y),
+					Size = new Size(maxWidth - 25 - inputWidth, 23)
+				};
+				this.ArgumentsPanel.Controls.Add(label);
+				this.LabelList.Add(label);
+
 				this.ArgumentsPanel.Controls.Add(numeric);
 				this.NumericsList.Add(numeric);
+
+				// Create tooltip
+				ToolTip toolTip = new();
+				toolTip.SetToolTip(numeric, $"Type: {argType.Name}\n");
+
+
+
+
 				y += 30;
 			}
 
@@ -169,7 +178,8 @@ namespace CUDABrotWithAlmonds
 					};
 					this.UpdateButtonTextColor(colorButton);
 
-					colorButton.Click += (s, e) => {
+					colorButton.Click += (s, e) =>
+					{
 						ColorDialog cd = new() { Color = colorButton.BackColor };
 						if (cd.ShowDialog() == DialogResult.OK)
 						{
@@ -226,9 +236,9 @@ namespace CUDABrotWithAlmonds
 					if (button != null)
 					{
 						Color c = button.BackColor;
-						values[i] = c.R;
+						values[i] = c.B;
 						values[i + 1] = c.G;
-						values[i + 2] = c.B;
+						values[i + 2] = c.R;
 						i += 2; // Skip G and B components
 						continue;
 					}
@@ -301,7 +311,13 @@ namespace CUDABrotWithAlmonds
 
 			return values;
 		}
-		
+
+		public string[] GetArgumentNames()
+		{
+			var argsDefinitions = this.ContextH.KernelH?.GetArguments(null, this.SilenceCheck.Checked) ?? [];
+			return argsDefinitions.Keys.ToArray();
+		}
+
 		private decimal GetMinimumValue(Type type) => type == typeof(char) ? byte.MinValue :
 				   type == typeof(sbyte) ? sbyte.MinValue :
 				   type == typeof(short) ? short.MinValue :
@@ -348,7 +364,7 @@ namespace CUDABrotWithAlmonds
 				return 4;
 			}
 
-			return argName.Contains("bit", StringComparison.OrdinalIgnoreCase) ?  this.ImageH.CurrentObject?.BitsPerPixel / 8 ?? 0 :  0;
+			return argName.Contains("bit", StringComparison.OrdinalIgnoreCase) ? this.ImageH.CurrentObject?.BitsPerPixel / 8 ?? 0 : 0;
 		}
 
 		private decimal GetIncrementValue(Type type) => type == typeof(float) ? 0.01m :
@@ -367,7 +383,7 @@ namespace CUDABrotWithAlmonds
 		public Form OpenKernelEditor(Size? size = null)
 		{
 			// Verify size
-			size ??= new Size(800, 600);
+			size ??= new Size(1000, 800);
 
 			// Create form
 			Form form = new()
@@ -411,8 +427,8 @@ namespace CUDABrotWithAlmonds
 			// Register events
 			textBox.KeyDown += (s, keyEventArgs) => // Füge keyEventArgs hinzu
 			{
-				// Prüfe, ob die gedrückte Taste die Enter-Taste ist
-				if (keyEventArgs.KeyCode == Keys.Enter)
+				// Prüfe, ob die gedrückte Taste die Enter-Taste ist oder CTRL+V war
+				if (keyEventArgs.KeyCode == Keys.Enter || keyEventArgs.KeyCode == Keys.V)
 				{
 					// Verhindere, dass die Enter-Taste eine Standardaktion ausführt (z.B. Piepen)
 					keyEventArgs.Handled = true;
@@ -462,6 +478,9 @@ namespace CUDABrotWithAlmonds
 					MessageBox.Show("Failed to load kernel.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
 					return;
 				}
+
+				// Close form
+				form.DialogResult = DialogResult.OK;
 			};
 
 			form.FormClosed += (s, e) =>
@@ -488,6 +507,328 @@ namespace CUDABrotWithAlmonds
 			return form;
 		}
 
+		public AutoFractalDialogResult? OpenAutoFractalDialog(string selectedKernelName = "")
+		{
+			Size size = new(800, 600);
+
+			List<string> kernelNames = this.ContextH.KernelH?.GetPtxFiles().Select(x => Path.GetFileNameWithoutExtension(x)).ToList() ?? [];
+
+			// Create form
+			Form form = new()
+			{
+				Name = "form_autoFractal",
+				Size = size,
+				StartPosition = FormStartPosition.CenterParent,
+				FormBorderStyle = FormBorderStyle.SizableToolWindow,
+				MaximizeBox = false,
+				MinimizeBox = false,
+				Text = "AutoFractal Settings"
+			};
+
+			// Combo for kernel names
+			ComboBox comboBox_kernels = new()
+			{
+				Name = "comboBox_autoFractal_kernels",
+				Location = new Point(10, 10),
+				Size = new Size(size.Width - 30, 23),
+				DropDownStyle = ComboBoxStyle.DropDownList
+			};
+
+			form.Controls.Add(comboBox_kernels);
+
+			// Nach Hinzufügen zur Form und Zuweisung der DataSource:
+			comboBox_kernels.DataSource = kernelNames;
+
+			// Ausgewählten Eintrag korrekt setzen:
+			int selectedIndex = kernelNames.IndexOf(selectedKernelName);
+			comboBox_kernels.SelectedIndex = selectedIndex >= 0 ? selectedIndex : 0;
+
+
+
+			int currentY = 40;
+
+			// Numeric (int) for width
+			NumericUpDown numeric_width = (NumericUpDown) this.AddControlToForm<NumericUpDown, int>(form, ref currentY, "Width", 0.4f);
+
+			// Numeric (int) for height
+			NumericUpDown numeric_height = (NumericUpDown) this.AddControlToForm<NumericUpDown, int>(form, ref currentY, "Height", 0.4f);
+
+			// Numeric (int) for fps
+			NumericUpDown numeric_fps = (NumericUpDown) this.AddControlToForm<NumericUpDown, int>(form, ref currentY, "FPS", 0.4f);
+
+			// Numeric (int) for steps
+			NumericUpDown numeric_steps = (NumericUpDown) this.AddControlToForm<NumericUpDown, int>(form, ref currentY, "Steps", 0.4f);
+
+			// Numeric (double) for initial zoom
+			NumericUpDown numeric_initZoom = (NumericUpDown) this.AddControlToForm<NumericUpDown, double>(form, ref currentY, "Init. Zoom", 0.4f);
+
+			// Numeric (decimal) for zoom increment coeff
+			NumericUpDown numeric_zoomIncCoeff = (NumericUpDown) this.AddControlToForm<NumericUpDown, decimal>(form, ref currentY, "Zoom Inc. Coeff", 0.4f);
+
+			// Numeric (int) for iteration coeff
+			NumericUpDown numeric_iterCoeff = (NumericUpDown) this.AddControlToForm<NumericUpDown, int>(form, ref currentY, "Iter. Coeff", 0.4f);
+
+			// Textbox for export file name
+			TextBox textbox_export = (TextBox) this.AddControlToForm<TextBox, char>(form, ref currentY, "File Name", 0.4f);
+
+			// Button for base color
+			Button button_baseColor = new()
+			{
+				Name = "button_autoFractal_baseColor",
+				Text = "Base Color",
+				Location = new Point(10, currentY),
+				Size = new Size(size.Width - 20, 23),
+				BackColor = Color.Black,
+				ForeColor = Color.White
+			};
+			button_baseColor.Click += (s, e) =>
+			{
+				ColorDialog cd = new() { Color = button_baseColor.BackColor };
+				if (cd.ShowDialog() == DialogResult.OK)
+				{
+					button_baseColor.BackColor = cd.Color;
+				}
+			};
+			form.Controls.Add(button_baseColor);
+
+			AutoFractalDialogResult? dialogResult = null; // <- Variable außerhalb von Eventhandler
+
+			Button button_go = new()
+			{
+				Name = "button_autoFractal_confirm",
+				Text = "GO!",
+				Location = new Point(size.Width - 120, size.Height - 60),
+				Size = new Size(100, 30)
+			};
+			form.Controls.Add(button_go);
+
+			Button button_cancel = new()
+			{
+				Name = "button_autoFractal_cancel",
+				Text = "Cancel",
+				Location = new Point(size.Width - 240, size.Height - 60),
+				Size = new Size(100, 30)
+			};
+			button_cancel.Click += (s, e) => form.DialogResult = DialogResult.Cancel;
+			form.Controls.Add(button_cancel);
+
+			button_go.Click += (s, e) =>
+			{
+				dialogResult = new AutoFractalDialogResult()
+				{
+					Width = (int) numeric_width.Value,
+					Height = (int) numeric_height.Value,
+					Fps = (int) numeric_fps.Value,
+					Steps = (int) numeric_steps.Value,
+					InitialZoom = (double) numeric_initZoom.Value,
+					ZoomIncrementCoeff = (double) numeric_zoomIncCoeff.Value,
+					IterationCoeff = (int) numeric_iterCoeff.Value,
+					BaseColor = button_baseColor.BackColor,
+					ExportFileName = textbox_export.Text,
+					KernelName = comboBox_kernels.SelectedItem?.ToString() ?? ""
+				};
+				form.DialogResult = DialogResult.OK;
+			};
+
+			DialogResult result = form.ShowDialog(this.ArgumentsPanel.FindForm());
+
+			if (result == DialogResult.OK && dialogResult != null)
+			{
+				return dialogResult;
+			}
+
+			return null;
+		}
+
+		public void RenderOverlayInPicturebox(PictureBox pbox, Dictionary<string, object> values, int fontSize = 10, Color? color = null, Size? size = null, Point? point = null)
+		{
+			if (pbox.Image is not Bitmap image)
+			{
+				this.Log("Image was null", "", 1);
+				return;
+			}
+
+			color ??= Color.White;
+			point ??= new Point(10, 10);
+			fontSize = fontSize <= 0 ? image.Height / 48 : fontSize;
+
+			// Berechne Box-Größe automatisch, falls nicht gesetzt
+			if (size == null)
+			{
+				int lineHeight = fontSize + 2;
+				int height = lineHeight * values.Count;
+				int width = values.Select(kv => TextRenderer.MeasureText($"{kv.Key}: {kv.Value}", new Font("Arial", fontSize, FontStyle.Bold)).Width).Max() + 4;
+				size = new Size(Math.Min(width, image.Width / 3), Math.Min(height, image.Height / 3) + 20);
+			}
+
+			Bitmap overlay = new(size.Value.Width, size.Value.Height);
+			using (Graphics g = Graphics.FromImage(overlay))
+			{
+				g.Clear(Color.FromArgb(64, 0, 0, 0)); // leicht transparenter Hintergrund für Lesbarkeit
+				g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+				g.SmoothingMode = SmoothingMode.HighQuality;
+				g.InterpolationMode = InterpolationMode.NearestNeighbor;
+
+				Font font = new("Arial", fontSize, FontStyle.Bold);
+				Brush brush = new SolidBrush(color.Value);
+
+				int y = 0;
+				foreach (var kv in values)
+				{
+					string text = $"{kv.Key}: {kv.Value}";
+					g.DrawString(text, font, brush, 4, y);
+					y += fontSize + 2;
+				}
+			}
+
+			using (Graphics g = Graphics.FromImage(image))
+			{
+				g.DrawImageUnscaled(overlay, point.Value);
+			}
+
+			pbox.Image = image;
+			pbox.Refresh();
+		}
+
+		public Bitmap CreateOverlayBitmap(Size? size, Dictionary<string, object> values, int fontSize = 10, Color? color = null, Size? imageSize = null)
+		{
+			color ??= Color.White;
+
+			// Wenn fontSize <= 0, dann automatisch anhand imageSize berechnen, falls imageSize gesetzt
+			if (fontSize <= 0 && imageSize.HasValue)
+			{
+				fontSize = imageSize.Value.Height / 48;
+			}
+
+			// Automatische Größe bestimmen, wenn nicht gesetzt
+			if (size == null)
+			{
+				int effectiveFontSize = fontSize <= 0 ? 12 : fontSize;
+				int lineHeight = effectiveFontSize + 2;
+				int height = lineHeight * values.Count;
+				int width = values.Select(kv => TextRenderer.MeasureText($"{kv.Key}: {kv.Value}", new Font("Arial", effectiveFontSize, FontStyle.Bold)).Width).Max() + 8;
+
+				if (imageSize.HasValue)
+				{
+					width = Math.Min(width, imageSize.Value.Width / 3);
+					height = Math.Min(height, imageSize.Value.Height / 3) + 20;
+				}
+				size = new Size(width, height);
+			}
+
+			Bitmap overlay = new(size.Value.Width, size.Value.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+
+			using (Graphics g = Graphics.FromImage(overlay))
+			{
+				g.Clear(Color.FromArgb(64, 0, 0, 0)); // leicht transparenter schwarzer Hintergrund
+
+				g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+				g.SmoothingMode = SmoothingMode.HighQuality;
+				g.InterpolationMode = InterpolationMode.NearestNeighbor;
+
+				using Font font = new("Arial", fontSize, FontStyle.Bold);
+				using Brush brush = new SolidBrush(color.Value);
+
+				int y = 4;
+				foreach (var kv in values)
+				{
+					string text = $"{kv.Key}: {kv.Value}";
+					g.DrawString(text, font, brush, 4, y);
+					y += fontSize + 2;
+				}
+			}
+
+			return overlay;
+		}
+
+
+
+
+		private Control AddControlToForm<T, T1>(Form form, ref int currentY, string text = "", float labelWidthPart = 0.4f) where T : Control where T1 : unmanaged
+		{
+			int labelWidth = (int) (form.Size.Width * labelWidthPart);
+
+			Label label = new()
+			{
+				Name = $"label_{form.Name}_{text}",
+				Text = text,
+				Location = new Point(10, currentY),
+				Size = new Size(labelWidth - 20, 23)
+			};
+
+			Control? control = null;
+			if (typeof(T) == typeof(TextBox))
+			{
+				control = new TextBox()
+				{
+					Name = $"textBox_{form.Name}_{text}",
+					Location = new Point(labelWidth, currentY),
+					Size = new Size(form.Size.Width - labelWidth - 30, 23),
+					PlaceholderText = "enter text here"
+				};
+			}
+			else if (typeof(T) == typeof(Button))
+			{
+				control = new Button()
+				{
+					Name = $"button_{form.Name}_{text}",
+					Text = text,
+					Location = new Point(labelWidth, currentY),
+					Size = new Size(form.Size.Width - labelWidth - 40, 23),
+					BackColor = Color.Black
+				};
+			}
+			else
+			{
+				control = new NumericUpDown()
+				{
+					Name = $"numeric_{form.Name}_{text}",
+					Location = new Point(labelWidth, currentY),
+					Size = new Size(form.Size.Width - labelWidth - 20, 23),
+					Minimum = 0,
+					Maximum = 8192,
+					Value = typeof(T1) == typeof(float) ? 1.0m :
+							typeof(T1) == typeof(double) ? 1.1m :
+							typeof(T1) == typeof(decimal) ? 1.2m :
+							text.ToLower().Contains("width") ? this.ImageH.CurrentImage?.Width ?? 512 :
+							text.ToLower().Contains("height") ? this.ImageH.CurrentImage?.Height ?? 512 :
+							text.ToLower().Contains("fps") ? 10 :
+							text.ToLower().Contains("steps") ? 16 :
+							text.ToLower().Contains("iter") ? 8 : 0,
+					Increment = typeof(T1) == typeof(float) ? 0.01m :
+							  typeof(T1) == typeof(double) ? 0.0001m :
+							  typeof(T1) == typeof(decimal) ? 0.000001m : 1,
+					DecimalPlaces = typeof(T1) == typeof(float) ? 4 :
+								  typeof(T1) == typeof(double) ? 8 :
+								  typeof(T1) == typeof(decimal) ? 12 : 0
+				};
+			}
+
+			form.Controls.Add(label);
+			form.Controls.Add(control);
+			currentY += 30;
+
+			return control!;
+		}
+
+
+	}
+
+	public class AutoFractalDialogResult
+	{
+		public int Width { get; set; } = 512;
+		public int Height { get; set; } = 512;
+		public int Fps { get; set; } = 10;
+
+		public int Steps { get; set; } = 16;
+		public double InitialZoom { get; set; } = 1.0;
+		public double ZoomIncrementCoeff { get; set; } = 1.1;
+		public int IterationCoeff { get; set; } = 8;
+		public Color BaseColor { get; set; } = Color.Black;
+
+		public string ExportFileName { get; set; } = "AutoFractal_";
+
+		public string KernelName { get; set; } = "mandelbrotFullAutoPrecise01";
 
 	}
 }

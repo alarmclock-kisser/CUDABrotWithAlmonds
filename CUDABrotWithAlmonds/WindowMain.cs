@@ -43,6 +43,9 @@ namespace CUDABrotWithAlmonds
 		private bool isProcessing;
 		private Dictionary<NumericUpDown, int> previousNumericValues = [];
 
+		private Form? fullScreenForm = null;
+		private Dictionary<string, object>? currentOverlayArgs = null;
+
 		// ----- ----- CONSTRUCTORS ----- ----- \\
 		public WindowMain()
 		{
@@ -68,6 +71,10 @@ namespace CUDABrotWithAlmonds
 			this.RegisterNumericToSecondPow(this.numericUpDown_size);
 			this.RegisterNumericToSecondPow(this.numericUpDown_createSize);
 
+
+			// Fill devices combobox
+			this.ContextH.FillDevicesCombobox();
+
 			// Select first device
 			if (this.comboBox_devices.Items.Count > 0)
 			{
@@ -75,7 +82,7 @@ namespace CUDABrotWithAlmonds
 			}
 
 			// Set latest kernel
-			this.ContextH.KernelH?.SelectLatestKernel();
+			// this.ContextH.KernelH?.SelectLatestKernel();
 		}
 
 
@@ -270,7 +277,7 @@ namespace CUDABrotWithAlmonds
 
 			// STOPWATCH
 			sw.Stop();
-			this.label_execTime.Text = $"Execution time: {sw.ElapsedMilliseconds} ms";
+			this.label_execTime.Text = $"Exec. time: {sw.ElapsedMilliseconds} ms";
 
 			// Optional: Move back to host
 			if (moved)
@@ -382,6 +389,47 @@ namespace CUDABrotWithAlmonds
 
 			// Refill list
 			this.ImageH.FillImagesListBox();
+		}
+
+		public void RenderArgsIntoPictureboxOld()
+		{
+			object[] argValues = this.GuiB.GetArgumentValues();
+			string[] argNames = this.GuiB.GetArgumentNames();
+			Dictionary<string, object> args = argValues
+				.Select((value, index) => new { Name = argNames[index], Value = value })
+				.ToDictionary(x => x.Name, x => x.Value);
+
+			Size size = new(200, 100);
+			Point point = new(0, 0);
+
+			// Remove pointers & dimensions from args
+			args = args.Where(x => !x.Key.ToLower().Contains("input") && !x.Key.ToLower().Contains("output") && !x.Key.ToLower().Contains("pixel") && !x.Key.ToLower().Contains("width") && !x.Key.ToLower().Contains("height")).ToDictionary(x => x.Key, x => x.Value);
+
+			// Render args into picture
+			this.GuiB.RenderOverlayInPicturebox(this.ImageH.ViewPBox, args, -1, Color.White, null, null);
+		}
+
+		public void RenderArgsIntoPicturebox()
+		{
+			object[] argValues = this.GuiB.GetArgumentValues();
+			string[] argNames = this.GuiB.GetArgumentNames();
+			Dictionary<string, object> args = argValues
+				.Select((value, index) => new { Name = argNames[index], Value = value })
+				.ToDictionary(x => x.Name, x => x.Value);
+
+			// Filter args (wie in deinem Code)
+			args = args.Where(x => !x.Key.ToLower().Contains("input") &&
+								  !x.Key.ToLower().Contains("output") &&
+								  !x.Key.ToLower().Contains("pixel") &&
+								  !x.Key.ToLower().Contains("width") &&
+								  !x.Key.ToLower().Contains("height"))
+					   .ToDictionary(x => x.Key, x => x.Value);
+
+			// Speichere args für Overlay-Zeichnung im Paint-Event
+			this.currentOverlayArgs = args;
+
+			// PictureBox neu zeichnen (ruft PictureBox_view_Paint auf)
+			this.ImageH.ViewPBox.Invalidate();
 		}
 
 		public void ExportAllGif()
@@ -541,6 +589,8 @@ namespace CUDABrotWithAlmonds
 
 				// Re-execute kernel
 				this.button_executeOOP_Click(sender, e);
+
+				this.RenderArgsIntoPicturebox();
 			}
 		}
 
@@ -617,9 +667,88 @@ namespace CUDABrotWithAlmonds
 			{
 				this.kernelExecutionRequired = false;
 				this.button_executeOOP_Click(sender, e);
+				this.RenderArgsIntoPicturebox();
 			}
 		}
 
+		private void PictureBox_view_Paint(object? sender, PaintEventArgs e)
+		{
+			var pbox = sender as PictureBox;
+			if (pbox == null) return;
+
+			// Erstens: Basis-Image zeichnen (falls noch nicht automatisch)
+			if (pbox.Image != null)
+			{
+				e.Graphics.DrawImage(pbox.Image, new Point(0, 0));
+			}
+
+			// Overlay nur zeichnen, wenn MandelbrotMode aktiv ist und Overlay-Daten vorhanden sind
+			if (this.MandelbrotMode && currentOverlayArgs != null && currentOverlayArgs.Count > 0)
+			{
+				// Overlay erstellen - Größe auf PictureBox-Größe oder nach Wunsch
+				Size overlaySize = new Size(pbox.Width / 8, pbox.Height / 8);
+
+				// Overlay vom GuiBuilder holen (erwartet: CreateOverlayBitmap(Size, Dictionary, ...))
+				Bitmap overlay = this.GuiB.CreateOverlayBitmap(overlaySize, currentOverlayArgs, fontSize: 12, color: Color.White, imageSize: pbox.Size);
+
+				// Overlay transparent zeichnen an gewünschter Position (z.B. oben links)
+				e.Graphics.DrawImageUnscaled(overlay, new Point(10, 10));
+
+				overlay.Dispose();
+			}
+		}
+
+
+
+		private Point TranslateMousePosToImageCoords(PictureBox pb, MouseEventArgs e)
+		{
+			if (pb.Image == null) return Point.Empty;
+
+			var img = pb.Image;
+
+			// Bild- und PictureBox-Verhältnisse
+			float imageAspect = (float) img.Width / img.Height;
+			float boxAspect = (float) pb.Width / pb.Height;
+
+			int displayedWidth, displayedHeight;
+			int offsetX, offsetY;
+
+			if (boxAspect > imageAspect)
+			{
+				// Bild wird an Höhe angepasst
+				displayedHeight = pb.Height;
+				displayedWidth = (int) (imageAspect * displayedHeight);
+				offsetX = (pb.Width - displayedWidth) / 2;
+				offsetY = 0;
+			}
+			else
+			{
+				// Bild wird an Breite angepasst
+				displayedWidth = pb.Width;
+				displayedHeight = (int) (displayedWidth / imageAspect);
+				offsetX = 0;
+				offsetY = (pb.Height - displayedHeight) / 2;
+			}
+
+			// Mausposition relativ zum Bild
+			int x = e.X - offsetX;
+			int y = e.Y - offsetY;
+
+			if (x < 0 || x >= displayedWidth || y < 0 || y >= displayedHeight)
+			{
+				// Maus außerhalb des Bildbereichs
+				return Point.Empty;
+			}
+
+			// Skalierung zurückrechnen auf Originalbildgröße
+			float scaleX = (float) img.Width / displayedWidth;
+			float scaleY = (float) img.Height / displayedHeight;
+
+			int imgX = (int) (x * scaleX);
+			int imgY = (int) (y * scaleY);
+
+			return new Point(imgX, imgY);
+		}
 
 
 
@@ -652,7 +781,20 @@ namespace CUDABrotWithAlmonds
 		private void button_createImage_Click(object sender, EventArgs e)
 		{
 			int dim = (int) this.numericUpDown_createSize.Value;
-			this.ImageH.CreateEmpty(Color.White, dim, "");
+			Size size;
+
+			// If CTRL down: Create empty image with screen size
+			if (ModifierKeys == Keys.Control)
+			{
+				size = new Size(Screen.PrimaryScreen?.Bounds.Width ?? 1024, Screen.PrimaryScreen?.Bounds.Height ?? 1024);
+			}
+			else
+			{
+				size = new Size(dim, dim);
+			}
+
+
+			this.ImageH.CreateEmpty(Color.White, size, "");
 			this.ImageH.FitZoom();
 		}
 
@@ -776,5 +918,144 @@ namespace CUDABrotWithAlmonds
 		{
 			this.GuiB.BuildPanel(0.55f, this.checkBox_optionalArgsOnly.Checked);
 		}
+
+		private async void button_autoFractal_Click(object sender, EventArgs e)
+		{
+			// Check initialized
+			if (this.ContextH.KernelH == null)
+			{
+				MessageBox.Show("Context not initialized", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				return;
+			}
+
+			AutoFractalDialogResult? dialogResult = this.GuiB.OpenAutoFractalDialog(this.comboBox_kernels.SelectedItem?.ToString() ?? "");
+			if (dialogResult == null)
+			{
+				return;
+			}
+
+			string kernelName = dialogResult.KernelName ?? this.comboBox_kernels.SelectedItem?.ToString() ?? "mandelbrotFullAutoPrecise01";
+			Size size = new Size(dialogResult.Width, dialogResult.Height);
+			int steps = dialogResult.Steps;
+			double initZoom = dialogResult.InitialZoom;
+			double zoomIncCoeff = dialogResult.ZoomIncrementCoeff;
+			int iterCoeff = dialogResult.IterationCoeff;
+			Color col = dialogResult.BaseColor;
+			string exportName = dialogResult.ExportFileName;
+
+			// Perform auto fractal -> IntPtr list
+			//List<IntPtr> results = this.ContextH.KernelH?.PerformAutoFractal(kernelName, size, steps, initZoom, zoomIncCoeff, iterCoeff, col, this.checkBox_silent.Checked) ?? [];
+
+			List<IntPtr> results = await this.ContextH.KernelH.PerformAutoFractalAsync(kernelName, size, steps, initZoom, zoomIncCoeff, iterCoeff, col, this.progressBar_load, this.checkBox_silent.Checked);
+			if (results.Count == 0)
+			{
+				MessageBox.Show("Failed to create fractal", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				return;
+			}
+
+			// Create images
+			List<ImageObject> objects = [];
+			for (int i = 0; i < results.Count; i++)
+			{
+				byte[] pixels = this.ContextH.MemoryH?.PullData<byte>(results[i], true, this.checkBox_silent.Checked) ?? [];
+				ImageObject obj = new(pixels, size);
+				obj.Name = $"{kernelName}_{i}";
+				objects.Add(obj);
+			}
+
+			this.Recorder.CachedImages = objects.Select(x => x.Img ?? new Bitmap(1, 1)).ToList();
+			this.Recorder.CountLabel.Text = $"Images: {this.Recorder.CachedImages.Count}";
+
+			// Reset progress bar
+			this.progressBar_load.Value = 0;
+			this.progressBar_load.Maximum = objects.Count;
+
+			// Create gif
+			string result = await this.Recorder.CreateGifAsync(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "CUDA-GIFs"), !string.IsNullOrEmpty(exportName) ? exportName : kernelName + "_autoFractal_", dialogResult.Fps, true, new Size(dialogResult.Width, dialogResult.Height), this.progressBar_load);
+			if (string.IsNullOrEmpty(result))
+			{
+				MessageBox.Show("Failed to create GIF", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+			}
+			else
+			{
+				MessageBox.Show($"GIF created: {result}\n\nSize: {new Size(dialogResult.Width, dialogResult.Height)}\nFPS: {dialogResult.Fps}", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+			}
+
+			// Reset progress bar
+			this.progressBar_load.Value = 0;
+			this.progressBar_load.Maximum = 100;
+
+			// Fill images listbox
+			this.ImageH.FillImagesListBox();
+		}
+
+		private void button_fullScreen_Click(object sender, EventArgs e)
+		{
+			if (!this.MandelbrotMode)
+			{
+				MessageBox.Show("Fullscreen is only available in Mandelbrot mode", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+				return;
+			}
+
+			if (this.fullScreenForm != null)
+			{
+				// Bereits aktiv, also schließen
+				this.fullScreenForm.Close();
+				this.fullScreenForm = null;
+				return;
+			}
+
+			// Neues Fullscreen-Form erstellen
+			this.fullScreenForm = new Form
+			{
+				FormBorderStyle = FormBorderStyle.None,
+				TopMost = true,
+				WindowState = FormWindowState.Maximized,
+				BackColor = Color.Black,
+				StartPosition = FormStartPosition.Manual,
+				KeyPreview = true
+			};
+
+			// Picturebox Location mittig
+			//Point location = new Point((this.fullScreenForm.Width - this.pictureBox_view.Width) / 2, (this.fullScreenForm.Height - this.pictureBox_view.Height) / 2);
+
+			// PictureBox in Originalgröße oder gestreckt anzeigen
+			PictureBox pb = new()
+			{
+				SizeMode = PictureBoxSizeMode.AutoSize,
+				Image = this.pictureBox_view.Image,
+				BackColor = Color.Black
+			};
+
+			// Reuse all existing event handlers
+			pb.MouseDown += this.pictureBox_view_MouseDown!;
+			pb.MouseMove += this.pictureBox_view_MouseMove!;
+			pb.MouseUp += this.pictureBox_view_MouseUp!;
+			pb.MouseWheel += this.pictureBox_view_MouseWheel!;
+			pb.Paint += this.PictureBox_view_Paint!;
+			pb.Focus(); // Damit MouseWheel funktioniert
+
+
+
+			this.fullScreenForm.Controls.Add(pb);
+			this.ImageH.SetPictureBox(pb);   // auf neue PB umstellen
+
+			// ESC beenden
+			this.fullScreenForm.KeyDown += (s, args) =>
+			{
+				if (args.KeyCode == Keys.Escape)
+				{
+					this.fullScreenForm?.Close();
+					this.fullScreenForm = null;
+
+					this.ImageH.SetPictureBox(this.pictureBox_view); // zurücksetzen
+				}
+			};
+
+
+			this.fullScreenForm.Show();
+			this.fullScreenForm.Focus(); // wichtig für ESC
+		}
+
 	}
 }

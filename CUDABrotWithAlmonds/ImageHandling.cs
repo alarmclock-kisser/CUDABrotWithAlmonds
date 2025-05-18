@@ -209,9 +209,28 @@ namespace CUDABrotWithAlmonds
 
 
 
-        // ----- ----- METHODS ----- ----- \\
+		// ----- ----- METHODS ----- ----- \\
+		public void SetPictureBox(PictureBox newPictureBox)
+		{
+			// Events von alter ViewPBox entfernen
+			if (this.ViewPBox != null)
+			{
+				this.ViewPBox.MouseWheel -= this.ViewPBox_MouseWheel;
+				this.ViewPBox.MouseDown -= this.ViewPBox_MouseDown;
+				this.ViewPBox.MouseMove -= this.ViewPBox_MouseMove;
+				this.ViewPBox.MouseUp -= this.ViewPBox_MouseUp;
+				this.ViewPBox.DoubleClick -= (s, e) => this.ImportImage();
+			}
 
-        public void FitZoom()
+			// Neue ViewPBox setzen
+			this.ViewPBox = newPictureBox;
+
+			// Bild setzen, falls vorhanden
+			this.ViewPBox.Image = this.CurrentImage;
+			this.ViewPBox.Invalidate();
+		}
+
+		public void FitZoom()
         {
             // Check if image is null
             if (this.CurrentImage == null)
@@ -389,10 +408,10 @@ namespace CUDABrotWithAlmonds
                     entry = " * " + entry;
                 }
 
-                if (entry.Length > 24)
+                if (entry.Length > 32)
                 {
-                    entry = entry.Substring(0, 22) + "...";
-                }
+                    entry = entry.Substring(0, 30) + "..." + entry.Substring(entry.Length - 2, 2);
+				}
 
                 this.ImagesList.Items.Add(entry);
             }
@@ -496,13 +515,11 @@ namespace CUDABrotWithAlmonds
             this.FillImagesListBox();
         }
 
-        public void CreateEmpty(Color? backColor = null, int size = 512, string name = "")
+        public void CreateEmpty(Color? backColor = null, Size? size = null, string name = "")
         {
-            // Verify color
+            // Verify color & size
             backColor ??= Color.Transparent;
-
-            // Positive size
-            size = Math.Max(size, 1);
+			size ??= new Size(512, 512);
 
             // Generate name
             if (string.IsNullOrEmpty(name))
@@ -511,7 +528,7 @@ namespace CUDABrotWithAlmonds
             }
 
             // Create bitmap with size and color
-            Bitmap bitmap = new(size, size, PixelFormat.Format32bppArgb);
+            Bitmap bitmap = new(size.Value.Width, size.Value.Height, PixelFormat.Format32bppArgb);
             using (Graphics g = Graphics.FromImage(bitmap))
             {
                 g.Clear(backColor.Value);
@@ -666,6 +683,23 @@ namespace CUDABrotWithAlmonds
 			this.Format = obj.Format;
 			this.BitsPerPixel = obj.BitsPerPixel;
             this.Pointer = obj.Pointer;
+		}
+
+        public ImageObject(byte[] pixels, Size size)
+        {
+			// Create bitmap from byte array
+			this.Img = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppArgb);
+			this.Width = size.Width;
+			this.Height = size.Height;
+		    this.Pointer = 0;
+			this.Format = PixelFormat.Format32bppArgb;
+			this.BitsPerPixel = Image.GetPixelFormatSize(this.Format);
+			this.SetImageFromBytes(pixels, true);
+
+			// Set name
+			this.Name = "Image_" + (this.Width * this.Height).ToString("00");
+            this.Filepath = "";
+			this.Modifications = [];
 		}
 
 
